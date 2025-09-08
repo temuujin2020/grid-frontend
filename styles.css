@@ -15,3 +15,6 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
 .status { font-size:12px; font-weight:700; color:#22c55e; }
 .empty { padding:14px; border:1px dashed #334155; border-radius:8px; color:#9fb3c8; }
 .grid.updating { opacity: 0.6; transition: opacity .18s linear; }
+/* optional: subtle fade to hide DOM swap */
+#listLive.updating, #listUpcoming.updating { opacity: .6; transition: opacity .15s ease; }
+#listLive, #listUpcoming { transition: opacity .15s ease; }
