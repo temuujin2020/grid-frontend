@@ -14,3 +14,4 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
 .event, .map { font-size:12px; color:#9fb3c8; margin-bottom:4px; }
 .status { font-size:12px; font-weight:700; color:#22c55e; }
 .empty { padding:14px; border:1px dashed #334155; border-radius:8px; color:#9fb3c8; }
+.grid.updating { opacity: 0.6; transition: opacity .18s linear; }
