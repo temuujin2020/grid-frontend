@@ -1,0 +1,16 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0b0f14; color:#e6edf3; }
+header { padding: 16px 20px; border-bottom: 1px solid #1f2937; }
+h1, h2 { margin: 0; }
+main { padding: 20px; max-width: 980px; margin: 0 auto; }
+.toolbar { display:flex; gap:16px; align-items:center; margin-bottom:16px; font-size:14px; color:#9fb3c8; }
+.cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap:12px; }
+.card { display:flex; justify-content:space-between; gap:12px; background:#111827; border:1px solid #1f2937; border-radius:10px; padding:12px; text-decoration:none; color:inherit; transition: transform .15s ease, border-color .15s ease; }
+.card:hover { transform: translateY(-2px); border-color:#334155; }
+.card.live { border-color:#ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,.25) inset; }
+.card.pinned { box-shadow: 0 0 0 1px rgba(234,179,8,.35) inset; }
+.row { display:flex; justify-content:space-between; gap:8px; }
+.team { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.score { font-variant-numeric: tabular-nums; color:#cbd5e1; }
+.event, .map { font-size:12px; color:#9fb3c8; margin-bottom:4px; }
+.status { font-size:12px; font-weight:700; color:#22c55e; }
+.empty { padding:14px; border:1px dashed #334155; border-radius:8px; color:#9fb3c8; }
