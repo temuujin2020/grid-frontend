@@ -1,8 +1,3 @@
-cd ~/Documents/grid-frontend
-cp app.js app.js.bak
-
-# Overwrite app.js with a clean, working version
-cat > app.js <<'EOF'
 // app.js — full single-file script (clean restore)
 (function () {
   // ---- DOM ----
