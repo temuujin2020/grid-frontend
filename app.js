@@ -1,4 +1,4 @@
-// app.js — safe, non-flicker version
+// app.js — safe, non-flicker version with backoff
 (function () {
   const ROOT = document.getElementById("matchesRoot");
   if (!ROOT) return;
@@ -10,10 +10,11 @@
   const TEAM_BADGE = document.getElementById("teamBadge");
   const UP_HOURS_SPAN = document.getElementById("upHoursSpan");
 
+  // read API base from data-api on <main>, fallback to Render URL
   const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
   const urlParams = new URLSearchParams(location.search);
 
-  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 8000);
+  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
   const TEAM_PIN = (urlParams.get("team") || "").trim().toLowerCase();
   const LIMIT_LIVE = Number(urlParams.get("limitLive") || 0);
   const LIMIT_UP   = Number(urlParams.get("limitUpcoming") || 0);
@@ -40,11 +41,13 @@
     LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
   }
 
-  // ---- helpers you may have already had ----
+  // -------- helpers --------
   function normalize(items, isLive) {
     return (items || []).map(it => {
       const teams = Array.isArray(it.teams) ? it.teams : (it.teams || []);
-      const names = teams.map(t => (t && t.name) || (t && t.baseInfo && t.baseInfo.name) || "").filter(Boolean);
+      const names = teams
+        .map(t => (t && t.name) || (t && t.baseInfo && t.baseInfo.name) || "")
+        .filter(Boolean);
       return {
         id: String(it.id ?? ""),
         event: (it.event || it.tournament || {}).name || (it.tournament && it.tournament.name) || "",
@@ -84,11 +87,10 @@
     return card;
   }
 
-  // ---- smooth list renderer (no flicker) ----
   function renderList(root, items, emptyText) {
     if (!root) return;
-
     const frag = document.createDocumentFragment();
+
     if (!items || items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty";
@@ -105,7 +107,22 @@
     });
   }
 
+  // -------- rate-limit aware refresh --------
   let inFlightCtrl;
+  let backoffMs = 0; // 0 when healthy; 60000 while rate-limited
+  let timer;
+
+  function isRateLimitedPayload(json) {
+    if (!json) return false;
+    const s = JSON.stringify(json).toUpperCase();
+    return s.includes("ENHANCE_YOUR_CALM") || s.includes("RATE LIMIT");
+  }
+
+  async function safeFetchJson(url, signal) {
+    const res = await fetch(url, { cache: "no-store", signal });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  }
 
   async function load() {
     if (inFlightCtrl) inFlightCtrl.abort();
@@ -113,11 +130,21 @@
     inFlightCtrl = ctrl;
 
     try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
-      ]);
+      // Stagger: live first, then upcoming 500ms later
+      const liveP = safeFetchJson(`${API_BASE}/live`, ctrl.signal);
+      await new Promise(r => setTimeout(r, 500));
+      const upP   = safeFetchJson(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, ctrl.signal);
+
+      const [{ data: liveRes }, { data: upRes }] = await Promise.all([liveP, upP]);
       if (ctrl.signal.aborted) return;
+
+      if (isRateLimitedPayload(liveRes) || isRateLimitedPayload(upRes)) {
+        backoffMs = 60000;      // cool down 60s
+        setLastUpdated("paused (rate limited)");
+        return;                 // keep current cards (no flicker)
+      } else {
+        backoffMs = 0;
+      }
 
       let live = normalize(liveRes.items || [], true);
       let upcoming = normalize(upRes.items || [], false);
@@ -138,23 +165,22 @@
       }
 
       if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UP > 0) upcoming = upcoming.slice(0, LIMIT_UP);
+      if (LIMIT_UP   > 0) upcoming = upcoming.slice(0, LIMIT_UP);
 
       renderList(LIST_LIVE, live, "No live matches right now.");
       renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
       setLastUpdated();
     } catch (e) {
-      if (ctrl.signal.aborted) return; // a newer refresh started
+      if (ctrl.signal.aborted) return;
       console.error(e);
-      // keep existing DOM; optional toast could go here
+      setLastUpdated("error (kept previous)");
     }
   }
 
-  let timer;
   function schedule() {
     if (timer) clearInterval(timer);
     load();
-    timer = setInterval(load, refreshMs);
+    timer = setInterval(load, (backoffMs || refreshMs));
   }
 
   schedule();
