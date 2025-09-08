@@ -34,96 +34,80 @@
     LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
   }
 
-  function renderList(container, matches, emptyMsg) {
-    container.innerHTML = "";
-    if (!matches.length) {
-      container.innerHTML = `<div class="empty">${emptyMsg}</div>`;
-      return;
-    }
-    for (const m of matches) {
-      const a = document.createElement("a");
-      a.className = "card" + (m.live ? " live" : "");
-      a.href = `https://grid.gg/series/${encodeURIComponent(m.id)}`;
-      a.target = "_blank";
-      a.rel = "noopener";
+ // Smooth renderer: builds off-DOM and swaps in one go
+function renderList(root, items, emptyText) {
+  const frag = document.createDocumentFragment();
 
-      const left = document.createElement("div");
-      const right = document.createElement("div");
-
-      left.innerHTML = `
-        <div class="row event">${m.event || "—"} ${m.format ? "• BO" + m.format : ""}</div>
-        <div class="row">
-          <div class="team">${m.teams?.[0] || "TBD"}</div>
-          <div class="score">${m.scores?.[0] ?? ""}</div>
-        </div>
-        <div class="row">
-          <div class="team">${m.teams?.[1] || "TBD"}</div>
-          <div class="score">${m.scores?.[1] ?? ""}</div>
-        </div>
-      `;
-      right.innerHTML = `<div class="status">${m.live ? "LIVE" : (m.localTime || "")}</div>`;
-
-      a.appendChild(left);
-      a.appendChild(right);
-      container.appendChild(a);
+  if (!items || items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = emptyText;
+    frag.appendChild(empty);
+  } else {
+    for (const m of items) {
+      frag.appendChild(renderCard(m)); // uses your existing card builder
     }
   }
 
-  function normalize(items, liveFlag = false) {
-    const out = [];
-    for (const it of items) {
-      const localTime = it.time ? new Date(it.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-      out.push({
-        id: it.id,
-        event: it.event,
-        format: it.format,
-        teams: it.teams,
-        scores: it.scores || ["", ""],
-        live: !!liveFlag,
-        time: it.time,
-        localTime
-      });
+  // fade while swapping, no hard clear
+  root.classList.add("updating");
+  requestAnimationFrame(() => {
+    root.replaceChildren(frag);
+    root.classList.remove("updating");
+  });
+}
+
+let inFlightCtrl; // keep the latest request so we can cancel it
+
+async function load() {
+  // cancel any previous in-flight refresh to avoid races/flicker
+  if (inFlightCtrl) inFlightCtrl.abort();
+  const ctrl = new AbortController();
+  inFlightCtrl = ctrl;
+
+  try {
+    const [liveRes, upRes] = await Promise.all([
+      fetch(`${API_BASE}/live`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
+      fetch(
+        `${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`,
+        { cache: "no-store", signal: ctrl.signal }
+      ).then(r => r.json())
+    ]);
+
+    // If this request was aborted because a newer one started, do nothing
+    if (ctrl.signal.aborted) return;
+
+    let live = normalize(liveRes.items || [], true);
+    let upcoming = normalize(upRes.items || [], false);
+
+    if (TEAM_PIN) {
+      const pin = TEAM_PIN;
+      const score = (a, b) => {
+        const ap = a.teams.join(" ").toLowerCase().includes(pin) ? 1 : 0;
+        const bp = b.teams.join(" ").toLowerCase().includes(pin) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return new Date(a.time) - new Date(b.time);
+      };
+      live.sort(score);
+      upcoming.sort((a, b) => new Date(a.time) - new Date(b.time));
+    } else {
+      live.sort((a, b) => new Date(a.time) - new Date(b.time));
+      upcoming.sort((a, b) => new Date(a.time) - new Date(b.time));
     }
-    return out;
+
+    if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
+    if (LIMIT_UP > 0) upcoming = upcoming.slice(0, LIMIT_UP);
+
+    renderList(LIST_LIVE, live, "No live matches right now.");
+    renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
+    setLastUpdated();
+  } catch (e) {
+    // If we aborted on purpose for a newer refresh, ignore the error
+    if (ctrl.signal.aborted) return;
+    console.error(e);
+    // keep the previous content; optionally show a small toast instead
   }
-
-  async function load() {
-    try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live`, { cache: "no-store" }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { cache: "no-store" }).then(r => r.json())
-      ]);
-
-      let live = normalize(liveRes.items || [], true);
-      let upcoming = normalize(upRes.items || [], false);
-
-      if (TEAM_PIN) {
-        const pin = TEAM_PIN;
-        const score = (a,b) => {
-          const ap = (a.teams.join(" ").toLowerCase().includes(pin)) ? 1 : 0;
-          const bp = (b.teams.join(" ").toLowerCase().includes(pin)) ? 1 : 0;
-          if (ap !== bp) return bp - ap;
-          return (new Date(a.time) - new Date(b.time));
-        };
-        live.sort(score);
-        upcoming.sort((a,b) => new Date(a.time) - new Date(b.time));
-      } else {
-        live.sort((a,b) => new Date(a.time) - new Date(b.time));
-        upcoming.sort((a,b) => new Date(a.time) - new Date(b.time));
-      }
-
-      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UP > 0) upcoming = upcoming.slice(0, LIMIT_UP);
-
-      renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
-      setLastUpdated();
-    } catch (e) {
-      console.error(e);
-      LIST_LIVE.innerHTML = '<div class="empty">Couldn’t load matches.</div>';
-      LIST_UP.innerHTML = '<div class="empty">Couldn’t load matches.</div>';
-    }
-  }
+}
 
   let timer;
   function schedule() {
