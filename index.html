@@ -9,14 +9,13 @@
 <body>
   <header><h1>Matches (v8)</h1></header>
 
-  <main id="matchesRoot" data-api="https://grid-proxy.onrender.com/api/series" data-refresh="8000">
+  <main id="matchesRoot" data-api="https://grid-proxy.onrender.com/api/series" data-refresh="30000">
     <div class="toolbar">
       <label>Refresh:
         <select id="refreshSelect">
-          <option value="5000">5s</option>
-          <option value="8000" selected>8s</option>
           <option value="15000">15s</option>
-        </select>
+          <option value="30000">30s</option>
+ </select>
       </label>
       <span id="teamBadge" hidden></span>
       <span id="lastUpdated"></span>
