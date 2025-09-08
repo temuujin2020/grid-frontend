@@ -10,7 +10,7 @@
   const TEAM_BADGE = document.getElementById("teamBadge");
   const UP_HOURS_SPAN = document.getElementById("upHoursSpan");
 
-  const API_BASE = "https://grid-proxy.onrender.com/api/series";
+  const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
   const urlParams = new URLSearchParams(location.search);
 
   let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 8000);
