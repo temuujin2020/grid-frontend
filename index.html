@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<=8" /head>
+<head>
   <meta charset="utf-8" />
   <title>Live + Upcoming</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,13 +9,15 @@
 <body>
   <header><h1>Matches (v8)</h1></header>
 
-  <main id="matchesRoot" data-api="https://grid-proxy.onrender.com/api/series" data-refresh="30000">
+  <main id="matchesRoot"
+        data-api="https://grid-proxy.onrender.com/api/series"
+        data-refresh="30000">
     <div class="toolbar">
       <label>Refresh:
         <select id="refreshSelect">
           <option value="15000">15s</option>
           <option value="30000">30s</option>
- </select>
+        </select>
       </label>
       <span id="teamBadge" hidden></span>
       <span id="lastUpdated"></span>
@@ -32,6 +34,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=13"></script>
+  <script defer src="app.js?v=13"></script>
 </body>
 </html>
