@@ -6,10 +6,18 @@ body {
   color: #e6edf3;
 }
 
-header { padding: 16px 20px; border-bottom: 1px solid #1f2937; }
+header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f2937;
+}
+
 h1, h2 { margin: 0; }
 
-main { padding: 20px; max-width: 980px; margin: 0 auto; }
+main {
+  padding: 20px;
+  max-width: 980px;
+  margin: 0 auto;
+}
 
 .toolbar {
   display: flex;
@@ -20,6 +28,7 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
   color: #9fb3c8;
 }
 
+/* ---------- Grid ---------- */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -30,11 +39,10 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
 .card {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   background: #111827;
   border: 1px solid #1f2937;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px;
   text-decoration: none;
   color: inherit;
@@ -55,16 +63,15 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
   box-shadow: 0 0 0 1px rgba(234,179,8,.35) inset;
 }
 
-/* ---------- Card header (top row) ---------- */
-.card-top {
+/* ---------- Card header ---------- */
+.card-header {
   display: flex;
+  justify-content: space-between; /* event left, badges right */
   align-items: center;
-  justify-content: space-between; /* NEW: event left, badges right */
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 10px;
 }
 
-.card-top .event {
+.card-left {
   font-size: 12px;
   color: #9fb3c8;
   font-weight: 600;
@@ -73,8 +80,8 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
   white-space: nowrap;
 }
 
-.badges {
-  display: inline-flex;       /* NEW: keep BOx/LIVE/time grouped */
+.card-right {
+  display: flex;
   gap: 6px;
   align-items: center;
 }
@@ -82,90 +89,99 @@ main { padding: 20px; max-width: 980px; margin: 0 auto; }
 /* ---------- Pills / badges ---------- */
 .pill {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px 8px;
   font-size: 12px;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 999px;
   background: #1f2937;
   color: #9fb3c8;
 }
 
+.pill.soft { background: #0b1220; }
+
 .pill.live-dot {
-  background: #ef4444;
-  color: #fff;
+  border-color: #ef4444;
+  color: #ef4444;
 }
 
-.pill.time { opacity: .9; }   /* NEW: time as a pill on the right */
-
-/* (Kept for backwards compatibility if you still use .time anywhere) */
-.time {
-  font-size: 13px;
-  color: #9fb3c8;
-}
-
-/* ---------- Card body (teams & scores) ---------- */
+/* ---------- Card body ---------- */
 .card-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.teams {
+.team-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-weight: 600;
+  gap: 8px;
 }
 
-.team {
-  font-weight: 700;
+.team-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #0b0f14;
+  object-fit: contain;
+}
+
+.team-name {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vs {
-  margin: 0 8px;
-  font-weight: 400;
+.vs-row {
+  text-align: center;
+  color: #9fb3c8;
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed #334155;
+  border-radius: 8px;
   color: #9fb3c8;
 }
 
-.score {
-  font-variant-numeric: tabular-nums;
-  color: #cbd5e1;
-}
-
-/* ---------- Optional “updating” fade (no flicker) ---------- */
+/* ---------- Update fade ---------- */
 #listLive.updating,
 #listUpcoming.updating {
   opacity: .6;
   transition: opacity .15s ease;
 }
 
-/* ---------- Optional skeleton styles (if you use them) ---------- */
-.skeleton {
-  position: relative;
-  overflow: hidden;
-  background: #0f172a;
-  border-radius: 8px;
-}
-
+/* ---------- Skeleton loading ---------- */
+.skeleton { position: relative; overflow: hidden; }
 .skeleton::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
-  transform: translateX(-100%);
-  animation: shimmer 1.2s infinite;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.05), transparent);
+  animation: shine 1.2s infinite;
 }
-
-@keyframes shimmer {
-  to { transform: translateX(100%); }
+@keyframes shine {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
-
-/* ---------- Small-screen tweaks ---------- */
-@media (max-width: 420px) {
-  .cards { grid-template-columns: 1fr; }
-  .badges { gap: 4px; }
-  .pill { font-size: 11px; padding: 2px 5px; }
+.skeleton-bar {
+  display: inline-block;
+  height: 14px;
+  background: #0f172a;
+  border-radius: 6px;
+}
+.skeleton-circle {
+  width: 22px;
+  height: 22px;
+  background: #0f172a;
+  border-radius: 50%;
 }
