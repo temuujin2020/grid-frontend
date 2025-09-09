@@ -1,42 +1,187 @@
-/* Base layout */
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0b0f14; color:#e6edf3; }
-header { padding: 16px 20px; border-bottom: 1px solid #1f2937; }
-h1, h2 { margin: 0; }
-main { padding: 20px; max-width: 980px; margin: 0 auto; }
-.toolbar { display:flex; gap:16px; align-items:center; margin-bottom:16px; font-size:14px; color:#9fb3c8; }
+/* Global */
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  margin: 0;
+  background: #0b0f14;
+  color: #e6edf3;
+}
 
-/* GRID CONTAINERS (used by #listLive, #listUpcoming when class="grid") */
-.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap:12px; }
-/* If you ever use class="cards" instead, this keeps it equivalent */
-.cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap:12px; }
+header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f2937;
+}
 
-/* Cards */
-.card { display:flex; justify-content:space-between; gap:12px; background:#111827; border:1px solid #1f2937; border-radius:10px; padding:12px; text-decoration:none; color:inherit; transition: transform .15s ease, border-color .15s ease; }
-.card:hover { transform: translateY(-2px); border-color:#334155; }
-.card.live { border-color:#ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,.25) inset; }
-.card.pinned { box-shadow: 0 0 0 1px rgba(234,179,8,.35) inset; }
+h1, h2 {
+  margin: 0;
+}
 
-/* New structure bits used by app.js */
-.card-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-.pill { display:inline-flex; align-items:center; padding:2px 8px; font-size:11px; line-height:1; border:1px solid #334155; border-radius:999px; color:#cbd5e1; background:#0b1220; }
-.pill.live-dot { border-color:#ef4444; color:#ef4444; }
+main {
+  padding: 20px;
+  max-width: 980px;
+  margin: 0 auto;
+}
 
-.card-body { display:flex; flex-direction:column; gap:8px; }
-.card-body .time { font-size:12px; color:#9fb3c8; }
-.teams { display:flex; align-items:center; gap:8px; font-weight:600; overflow:hidden; }
-.teams > div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.vs { opacity:.7; font-weight:500; }
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #9fb3c8;
+}
 
-/* Legacy rows (still fine to keep if some cards use them) */
-.row { display:flex; justify-content:space-between; gap:8px; }
-.team { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.score { font-variant-numeric: tabular-nums; color:#cbd5e1; }
-.event, .map { font-size:12px; color:#9fb3c8; margin-bottom:4px; }
-.status { font-size:12px; font-weight:700; color:#22c55e; }
+/* Cards grid */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
 
-.empty { padding:14px; border:1px dashed #334155; border-radius:8px; color:#9fb3c8; }
+/* Card container */
+.card {
+  display: flex;
+  flex-direction: column;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .15s ease, border-color .15s ease;
+}
 
-/* Smooth “no flicker” swap */
-.grid.updating { opacity: 0.6; transition: opacity .18s linear; }
-#listLive.updating, #listUpcoming.updating { opacity: .6; transition: opacity .15s ease; }
-#listLive, #listUpcoming { transition: opacity .15s ease; }
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #334155;
+}
+
+.card.live {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239,68,68,.25) inset;
+}
+
+.card.pinned {
+  box-shadow: 0 0 0 1px rgba(234,179,8,.35) inset;
+}
+
+/* Card sections */
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Pills for event/format/live */
+.pill {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #9fb3c8;
+  margin-right: 6px;
+}
+
+.pill.live-dot {
+  background: #ef4444;
+  color: white;
+}
+
+/* Time + Teams */
+.time {
+  font-size: 13px;
+  color: #9fb3c8;
+}
+
+.teams {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.vs {
+  margin: 0 8px;
+  font-weight: 400;
+  color: #9fb3c8;
+}
+
+/* Score */
+.score {
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+
+/* Other rows */
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event,
+.map {
+  font-size: 12px;
+  color: #9fb3c8;
+  margin-bottom: 4px;
+}
+
+.status {
+  font-size: 12px;
+  font-weight: 700;
+  color: #22c55e;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed #334155;
+  border-radius: 8px;
+  color: #9fb3c8;
+}
+
+/* Fade effect when updating */
+#listLive.updating,
+#listUpcoming.updating {
+  opacity: .6;
+  transition: opacity .15s ease;
+}
+
+#listLive,
+#listUpcoming {
+  transition: opacity .15s ease;
+}
+
+/* --- Score Badge --- */
+.score-badge {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 6px;
+  background: #1e293b;   /* dark gray background */
+  color: #f8fafc;        /* almost white text */
+  border: 1px solid #334155;
+}
+
+.card.live .score-badge {
+  background: #ef4444;   /* red for live matches */
+  border-color: #b91c1c;
+}

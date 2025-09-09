@@ -40,9 +40,9 @@
   }
 
 function setLastUpdated(note) {
-  if (!LAST) return;
+  if (!LAST_UPDATED) return;
   const noteStr = note ? ` (${note})` : "";
-  LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
+  LAST_UPDATED.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
 }
 
 // --- normalize: turn raw API items into a consistent shape
@@ -196,39 +196,39 @@ function renderCard(m) {
 
 
   // ---- Renderer ----
-  function renderCard(m) {
-    const left  = escapeHtml(m.teams?.[0] || "TBD");
-    const right = escapeHtml(m.teams?.[1] || "TBD");
+function renderCard(m) {
+  const left  = escapeHtml(m.teams?.[0] || "TBD");
+  const right = escapeHtml(m.teams?.[1] || "TBD");
 
-    const t = new Date(m.time);
-    const when = isNaN(t) ? "" : t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const t = new Date(m.time);
+  const when = isNaN(t) ? "" : t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    const scoreHtml = (m.live && m.scoreA != null && m.scoreB != null)
-      ? `<div class="score">${m.scoreA}&nbsp;–&nbsp;${m.scoreB}</div>`
-      : "";
+  const scoreHtml = (m.live && m.scoreA != null && m.scoreB != null)
+    ? `<div class="score-badge">${m.scoreA}&nbsp;–&nbsp;${m.scoreB}</div>`
+    : "";
 
-    const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
+  const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
 
-    const card = document.createElement("div");
-    card.className = "card" + (m.live ? " live" : "");
-    card.innerHTML = `
-      <div class="card-top">
-        <span class="pill">BO${escapeHtml(m.format || "3")}</span>
-        ${livePill}
-        <span class="time">${escapeHtml(when)}</span>
+  const card = document.createElement("div");
+  card.className = "card" + (m.live ? " live" : "");
+  card.innerHTML = `
+    <div class="card-top">
+      <span class="pill">BO${escapeHtml(m.format || "3")}</span>
+      ${livePill}
+      <span class="time">${escapeHtml(when)}</span>
+    </div>
+    <div class="card-body">
+      <div class="teams">
+        <div>${left}</div>
+        <div class="vs">vs</div>
+        <div>${right}</div>
       </div>
-      <div class="card-body">
-        <div class="teams">
-          <div>${left}</div>
-          <div class="vs">vs</div>
-          <div>${right}</div>
-        </div>
-        ${scoreHtml}
-        <div class="event">${escapeHtml(m.event || "")}</div>
-      </div>
-    `;
-    return card;
-  }
+      ${scoreHtml}
+      <div class="event">${escapeHtml(m.event || "")}</div>
+    </div>
+  `;
+  return card;
+}
 
   function renderList(root, items, emptyText) {
     if (!root) return;
