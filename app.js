@@ -39,57 +39,161 @@
     TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
   }
 
-  function setLastUpdated(note) {
-    if (!LAST_UPDATED) return;
-    const noteStr = note ? ` (${note})` : "";
-    LAST_UPDATED.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
+function setLastUpdated(note) {
+  if (!LAST) return;
+  const noteStr = note ? ` (${note})` : "";
+  LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
+}
+
+// --- normalize: turn raw API items into a consistent shape
+function normalize(items, isLive) {
+  return (items || []).map(it => {
+    // team names (robust to either {name} or {baseInfo:{name}})
+    const teams = (Array.isArray(it.teams) ? it.teams : (it.teams || []))
+      .map(t => t?.name || t?.baseInfo?.name || "TBD");
+
+    // tournament/event name
+    const tournament =
+      it.event?.name ||
+      it.tournament?.name ||
+      it.tournament?.baseInfo?.name ||
+      "";
+
+    // format => BO3 / BO5 etc
+    const fmtRaw = (it.format?.id || it.format || "").toString();
+    const formatLabel = fmtRaw ? `BO${fmtRaw}` : "";
+
+    // status/live flag best-effort
+    const status = (it.status || (isLive ? "live" : "scheduled")).toLowerCase();
+    const live = status === "live" || !!isLive;
+
+    // stage (optional)
+    const stage = it.stage?.name || it.stage || "";
+
+    // score (works if API sends something like {home, away} or result fields)
+    // if not present, set to null so UI hides it gracefully.
+    let score = null;
+    const s = it.scores || it.score || it.result || null;
+    if (s && (Number.isFinite(s.home) || Number.isFinite(s.away))) {
+      score = { home: Number(s.home) || 0, away: Number(s.away) || 0 };
+    } else if (Number.isFinite(it.homeScore) || Number.isFinite(it.awayScore)) {
+      score = { home: Number(it.homeScore) || 0, away: Number(it.awayScore) || 0 };
+    }
+
+    // start time
+    const timeISO = it.time || it.startTimeScheduled || "";
+
+    return {
+      id: String(it.id ?? ""),
+      time: timeISO,
+      teams,
+      tournament,
+      stage,
+      formatLabel,
+      status,
+      live,
+      score
+    };
+  }).filter(x => x.id && x.time);
+}
+
+// --- renderCard: builds each match card
+function renderCard(m) {
+  const card = document.createElement("a");
+  card.className = "card" + (m.live ? " live" : "");
+  card.href = "#"; // (optional) link to details page if you add one later
+  card.setAttribute("aria-label", `${m.teams[0] ?? "TBD"} vs ${m.teams[1] ?? "TBD"}`);
+
+  // TOP: pills (BOx, LIVE), time
+  const top = document.createElement("div");
+  top.className = "row";
+
+  const leftPills = document.createElement("div");
+  leftPills.className = "pills";
+  if (m.formatLabel) {
+    const pillFmt = document.createElement("span");
+    pillFmt.className = "pill";
+    pillFmt.textContent = m.formatLabel;
+    leftPills.appendChild(pillFmt);
+  }
+  if (m.live) {
+    const pillLive = document.createElement("span");
+    pillLive.className = "pill live";
+    pillLive.textContent = "LIVE";
+    leftPills.appendChild(pillLive);
   }
 
-  // ---- Normalizer ----
-  function normalize(items, isLive) {
-    return (items || []).map(it => {
-      // Teams
-      let names = [];
-      if (Array.isArray(it.teams)) {
-        names = it.teams.map(t =>
-          typeof t === "string"
-            ? t
-            : (t?.name) || (t?.baseInfo?.name) || ""
-        ).filter(Boolean);
-      }
+  const timeEl = document.createElement("div");
+  timeEl.className = "time";
+  // show local time HH:mm
+  const dt = new Date(m.time);
+  timeEl.textContent = isNaN(dt) ? "" : dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-      // Best-of
-      const bestOf =
-        it.bestOf ??
-        it.format?.bestOf ??
-        it.format?.id ??
-        (typeof it.format === "number" ? it.format : 3);
+  top.appendChild(leftPills);
+  top.appendChild(timeEl);
 
-      // Time
-      const when = it.time || it.startTimeScheduled || it.startTime || "";
+  // TITLE: teams (+ score when present)
+  const title = document.createElement("div");
+  title.className = "teams";
 
-      // Event / tournament
-      const eventName = it.event?.name || it.tournament?.name || it.tournamentName || "";
+  const t1 = document.createElement("div");
+  t1.className = "team";
+  t1.textContent = m.teams[0] || "TBD";
 
-      // Scores
-      let sA, sB;
-      if (it.scores && (it.scores.a != null || it.scores.b != null)) {
-        sA = it.scores.a;
-        sB = it.scores.b;
-      }
+  const vs = document.createElement("div");
+  vs.className = "vs";
+  vs.textContent = "vs";
 
-      return {
-        id: String(it.id ?? ""),
-        teams: names,
-        event: eventName,
-        format: bestOf,
-        time: when,
-        scoreA: sA,
-        scoreB: sB,
-        live: !!isLive
-      };
-    }).filter(x => x.id && x.time);
+  const t2 = document.createElement("div");
+  t2.className = "team";
+  t2.textContent = m.teams[1] || "TBD";
+
+  // score (optional)
+  if (m.score && (Number.isFinite(m.score.home) || Number.isFinite(m.score.away))) {
+    const score = document.createElement("div");
+    score.className = "score";
+    score.textContent = `${m.score.home ?? 0} — ${m.score.away ?? 0}`;
+    // put score after the teams row
+    title.appendChild(t1);
+    title.appendChild(vs);
+    title.appendChild(t2);
+    // score on next line under teams (looks cleaner)
+    const scoreWrap = document.createElement("div");
+    scoreWrap.className = "score-wrap";
+    scoreWrap.appendChild(score);
+
+    const mid = document.createElement("div");
+    mid.className = "mid";
+    mid.appendChild(title);
+    mid.appendChild(scoreWrap);
+
+    // META (tournament + stage)
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = [m.tournament, m.stage].filter(Boolean).join(" • ");
+
+    card.appendChild(top);
+    card.appendChild(mid);
+    card.appendChild(meta);
+    return card;
   }
+
+  // no score → simpler layout
+  title.appendChild(t1);
+  title.appendChild(vs);
+  title.appendChild(t2);
+
+  // META (tournament + stage)
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = [m.tournament, m.stage].filter(Boolean).join(" • ");
+
+  card.appendChild(top);
+  card.appendChild(title);
+  card.appendChild(meta);
+  return card;
+}
+
 
   // ---- Renderer ----
   function renderCard(m) {
@@ -146,65 +250,6 @@
     });
   }
 
-  // ---- Loader ----
-  let inFlightCtrl;
-  async function load() {
-    if (inFlightCtrl) inFlightCtrl.abort();
-    const ctrl = new AbortController();
-    inFlightCtrl = ctrl;
 
-    try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
-      ]);
 
-      if (ctrl.signal.aborted) return;
-
-      let live = normalize(liveRes.items || [], true);
-      let upcoming = normalize(upRes.items || [], false);
-
-      // Sort
-      live.sort((a, b) => new Date(a.time) - new Date(b.time));
-      upcoming.sort((a, b) => new Date(a.time) - new Date(b.time));
-
-      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UPCOMING > 0) upcoming = upcoming.slice(0, LIMIT_UPCOMING);
-
-      renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UPCOMING, upcoming, "No upcoming matches in the selected window.");
-      setLastUpdated();
-    } catch (err) {
-      if (ctrl.signal.aborted) return;
-      console.error("[load] error:", err);
-      setLastUpdated("error");
-    }
-  }
-
-  // ---- Scheduler ----
-  function nextInterval() {
-    const floor = 8000;
-    const jitter = Math.floor(Math.random() * 500);
-    return Math.max(floor, refreshMs) + jitter;
-  }
-
-  let timer;
-  function schedule() {
-    if (timer) clearTimeout(timer);
-    load();
-    timer = setTimeout(schedule, nextInterval());
-  }
-
-  // ---- Utils ----
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  // ---- Start ----
-  schedule();
 })();
