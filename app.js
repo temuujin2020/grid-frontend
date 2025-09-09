@@ -1,4 +1,4 @@
-// app.js — fast first paint + resilient refresh
+// app.js — fast first paint + resilient refresh (fixed)
 (function () {
   const ROOT           = document.getElementById("matchesRoot");
   if (!ROOT) return;
@@ -40,35 +40,42 @@
     if (LAST) LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
   }
 
-// ---------- helpers ----------
-function getTeamName(t) {
-  if (!t) return "";
-  // allow string or object
-  if (typeof t === "string") return t;
-  // common places team names live
-  return (
-    t.name ||
-    (t.baseInfo && (t.baseInfo.shortName || t.baseInfo.name)) ||
-    (t.team && t.team.name) ||
-    (t.org && t.org.name) ||
-    ""
-  );
-}
-
-function formatTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+  // ---------- small utils ----------
+  function getTeamName(t) {
+    if (!t) return "";
+    if (typeof t === "string") return t;
+    return (
+      t.name ||
+      (t.baseInfo && (t.baseInfo.shortName || t.baseInfo.name)) ||
+      (t.team && t.team.name) ||
+      (t.org && t.org.name) ||
+      ""
+    );
+  }
+  function formatTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+  async function fetchJSONWithTimeout(url, { signal } = {}, timeoutMs = 8000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: signal || ctrl.signal, cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
 
   // ---------- skeleton (instant first paint) ----------
   function skeletonCard() {
@@ -76,8 +83,12 @@ function escapeHtml(s) {
     d.className = "card skeleton";
     d.innerHTML = `
       <div class="card-top">
-        <span class="pill">BO—</span>
-        <span class="time">--:--</span>
+        <div class="event shimmer w140"></div>
+        <div class="badges">
+          <span class="pill shimmer w36"></span>
+          <span class="pill shimmer w36"></span>
+          <span class="pill shimmer w48"></span>
+        </div>
       </div>
       <div class="card-body">
         <div class="teams">
@@ -85,11 +96,9 @@ function escapeHtml(s) {
           <div class="vs">vs</div>
           <div class="shimmer w72"></div>
         </div>
-        <div class="shimmer w120 mt8"></div>
       </div>`;
     return d;
   }
-
   function showSkeleton() {
     const fill = (root) => {
       if (!root) return;
@@ -99,98 +108,88 @@ function escapeHtml(s) {
     fill(LIST_UP);
   }
 
-// ---------- normalize ----------
-function normalize(items, isLive) {
-  return (items || [])
-    .map(it => {
-      const teamsRaw = Array.isArray(it.teams) ? it.teams : (it.teams || []);
-      const names = teamsRaw.map(getTeamName).filter(Boolean);
+  // ---------- normalize ----------
+  function normalize(items, isLive) {
+    return (items || [])
+      .map(it => {
+        const teamsRaw = Array.isArray(it.teams) ? it.teams : (it.teams || []);
+        const names = teamsRaw.map(getTeamName).filter(Boolean);
 
-      // competition / event name can be in a few places
-      const eventName =
-        (it.event && it.event.name) ||
-        (it.tournament && it.tournament.name) ||
-        (it.league && it.league.name) ||
-        it.event || it.tournament || "";
+        const eventName =
+          (it.event && it.event.name) ||
+          (it.tournament && it.tournament.name) ||
+          (it.league && it.league.name) ||
+          it.event || it.tournament || "";
 
-      // best-of format
-      const fmt =
-        (it.format && (it.format.id || it.format.bestOf || it.format.maps)) ||
-        it.bestOf ||
-        it.maps ||
-        3;
+        const fmt =
+          (it.format && (it.format.id || it.format.bestOf || it.format.maps)) ||
+          it.bestOf ||
+          it.maps ||
+          3;
 
-      // scheduled/start time
-      const when = it.time || it.startTimeScheduled || it.start || "";
+        const when = it.time || it.startTimeScheduled || it.start || "";
 
-      // scores (many shapes exist; handle a couple safely)
-      let scores = null;
-      if (Array.isArray(it.scores) && it.scores.length === 2) {
-        scores = [it.scores[0] ?? null, it.scores[1] ?? null];
-      } else if (it.scoreA != null || it.scoreB != null) {
-        scores = [it.scoreA ?? null, it.scoreB ?? null];
-      } else if (it.result && Array.isArray(it.result)) {
-        scores = [it.result[0] ?? null, it.result[1] ?? null];
-      }
+        let scores = null;
+        if (Array.isArray(it.scores) && it.scores.length === 2) {
+          scores = [it.scores[0] ?? null, it.scores[1] ?? null];
+        } else if (it.scoreA != null || it.scoreB != null) {
+          scores = [it.scoreA ?? null, it.scoreB ?? null];
+        } else if (it.result && Array.isArray(it.result)) {
+          scores = [it.result[0] ?? null, it.result[1] ?? null];
+        }
 
-      return {
-        id: String(it.id ?? ""),
-        event: eventName,
-        format: fmt,
-        time: when,
-        teams: [names[0] || "", names[1] || ""],
-        scores,
-        live: !!isLive
-      };
-    })
-    // keep only rows that have at least a time or a team
-    .filter(r => r.id && (r.teams[0] || r.teams[1] || r.time));
-}
+        return {
+          id: String(it.id ?? ""),
+          event: eventName,
+          format: fmt,
+          time: when,                 // <— keep as ISO string
+          teams: [names[0] || "", names[1] || ""],
+          scores,
+          live: !!isLive
+        };
+      })
+      .filter(r => r.id && (r.teams[0] || r.teams[1] || r.time));
+  }
 
-function renderCard(m) {
-  const a = escapeHtml(m.teams[0] || "TBD");
-  const b = escapeHtml(m.teams[1] || "TBD");
-  const scoreHtml = Array.isArray(m.scores)
-    ? `<span class="score">${m.scores[0] ?? ""}</span>
-       <span class="vs">–</span>
-       <span class="score">${m.scores[1] ?? ""}</span>`
-    : `<span class="vs">vs</span>`;
+  // ---------- render ----------
+  function renderCard(m) {
+    const a = escapeHtml(m.teams[0] || "TBD");
+    const b = escapeHtml(m.teams[1] || "TBD");
+    const scoreHtml = Array.isArray(m.scores)
+      ? `<span class="score">${m.scores[0] ?? ""}</span>
+         <span class="vs">–</span>
+         <span class="score">${m.scores[1] ?? ""}</span>`
+      : `<span class="vs">vs</span>`;
 
-  const topRight =
-    `<div class="badges">
-       <span class="pill">BO${escapeHtml(m.format)}</span>
-       ${m.live ? '<span class="pill live-dot">LIVE</span>' : ""}
-       <span class="pill time">${escapeHtml(formatTime(m.time))}</span>
-     </div>`;
+    const topRight =
+      `<div class="badges">
+         <span class="pill">BO${escapeHtml(m.format)}</span>
+         ${m.live ? '<span class="pill live-dot">LIVE</span>' : ""}
+         <span class="pill time">${escapeHtml(formatTime(m.time))}</span>
+       </div>`;
 
-  const topLeft =
-    `<div class="event">${escapeHtml(m.event || "")}</div>`;
+    const topLeft = `<div class="event">${escapeHtml(m.event || "")}</div>`;
 
-  const card = document.createElement("div");
-  card.className = "card" + (m.live ? " live" : "");
-
-  card.innerHTML = `
-    <div class="card-top">
-      ${topLeft}
-      ${topRight}
-    </div>
-
-    <div class="card-body">
-      <div class="teams">
-        <div class="team">${a}</div>
-        ${scoreHtml}
-        <div class="team">${b}</div>
+    const card = document.createElement("div");
+    card.className = "card" + (m.live ? " live" : "");
+    card.innerHTML = `
+      <div class="card-top">
+        ${topLeft}
+        ${topRight}
       </div>
-    </div>
-  `;
-
-  return card;
-}
+      <div class="card-body">
+        <div class="teams">
+          <div class="team">${a}</div>
+          ${scoreHtml}
+          <div class="team">${b}</div>
+        </div>
+      </div>`;
+    return card;
+  }
 
   function renderList(root, items, emptyText) {
     if (!root) return;
     const frag = document.createDocumentFragment();
-
     if (!items || items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty";
@@ -199,7 +198,6 @@ function renderCard(m) {
     } else {
       for (const m of items) frag.appendChild(renderCard(m));
     }
-
     root.classList.add("updating");
     requestAnimationFrame(() => {
       root.replaceChildren(frag);
@@ -211,7 +209,7 @@ function renderCard(m) {
     if (!container || !pinLower) return;
     const cards = container.querySelectorAll(".card");
     cards.forEach(card => {
-      const names = Array.from(card.querySelectorAll(".teams div"))
+      const names = Array.from(card.querySelectorAll(".teams .team"))
         .map(n => n.textContent.toLowerCase())
         .join(" ");
       if (names.includes(pinLower)) card.classList.add("pinned");
@@ -220,7 +218,6 @@ function renderCard(m) {
 
   // ---------- data load ----------
   let inFlightCtrl;
-
   async function load() {
     if (inFlightCtrl) inFlightCtrl.abort();
     const ctrl = new AbortController();
@@ -236,8 +233,8 @@ function renderCard(m) {
       let live = normalize(liveRes.items || [], true);
       let upcoming = normalize(upRes.items || [], false);
 
-      // Sort (pinned first for live), then by time
-      const byTime = (a, b) => new Date(a.timeIso) - new Date(b.timeIso);
+      const byTime = (a, b) => new Date(a.time) - new Date(b.time); // <— fixed
+
       if (TEAM_PIN) {
         const hasPin = (m) => (m.teams.join(" ").toLowerCase().includes(TEAM_PIN));
         live.sort((a, b) => {
@@ -263,7 +260,6 @@ function renderCard(m) {
     } catch (e) {
       if (!ctrl.signal.aborted) {
         console.error("Load error:", e);
-        // keep current DOM; next scheduled run will retry
       }
     }
   }
@@ -273,17 +269,15 @@ function renderCard(m) {
     const floor = Math.max(8000, refreshMs);
     return floor + Math.floor(Math.random() * 500);
   }
-
   let first = true, timer;
   function schedule() {
     if (timer) clearTimeout(timer);
-    showSkeleton();           // paint something immediately
+    showSkeleton();
     load().finally(() => {
-      const wait = first ? 3000 : nextInterval(); // quick follow-up after first load
+      const wait = first ? 3000 : nextInterval();
       first = false;
       timer = setTimeout(schedule, wait);
     });
   }
-
   schedule();
 })();
