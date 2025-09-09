@@ -1,225 +1,165 @@
-// app.js — grid-frontend (Safari-safe)
-// - No AbortSignal.any()
-// - Jittered refresh to avoid sync thundering herd
-// - Event name on the LEFT, badges (BOx, LIVE, time) on the RIGHT
-// - Team logos (if present) + fallbacks
-// - Gentle skeleton on first paint; no flicker on subsequent renders
-
+// app.js — Safari-safe fetch + robust normalizer + tidy cards
 (function () {
-  // ---- DOM ----
-  const ROOT          = document.getElementById("matchesRoot");
+  const ROOT = document.getElementById("matchesRoot");
   if (!ROOT) return;
 
-  const LIST_LIVE     = document.getElementById("listLive");
-  const LIST_UP       = document.getElementById("listUpcoming");
-  const LAST          = document.getElementById("lastUpdated");
-  const REFRESH_SELECT= document.getElementById("refreshSelect");
-  const TEAM_BADGE    = document.getElementById("teamBadge");
-  const UP_HOURS_SPAN = document.getElementById("upHoursSpan");
+  // ---- DOM ----
+  const LIST_LIVE = document.getElementById("listLive");
+  const LIST_UP   = document.getElementById("listUpcoming");
+  const LAST      = document.getElementById("lastUpdated");
+  const REFRESH   = document.getElementById("refreshSelect");
+  const TEAM_BADGE= document.getElementById("teamBadge");
+  const UP_SPAN   = document.getElementById("upHoursSpan");
 
-  // ---- Config via DOM/data-* or URL ----
-  const API_BASE = (ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series").replace(/\/$/, "");
+  // ---- Config from HTML data-* ----
+  const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
   const urlParams = new URLSearchParams(location.search);
 
-  let refreshMs         = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
-  const TEAM_PIN        = (urlParams.get("team") || "").trim().toLowerCase();
-  const LIMIT_LIVE      = Number(urlParams.get("limitLive") || 0);
-  const LIMIT_UPCOMING  = Number(urlParams.get("limitUpcoming") || 0);
-  const UPCOMING_HOURS  = Number(urlParams.get("hoursUpcoming") || 24);
+  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 30000);
+  const TEAM_PIN = (urlParams.get("team") || "").trim().toLowerCase();
+  const LIMIT_LIVE = Number(urlParams.get("limitLive") || 0);
+  const LIMIT_UP   = Number(urlParams.get("limitUpcoming") || 0);
+  const UPCOMING_HOURS = Number(urlParams.get("hoursUpcoming") || 24);
+  if (UP_SPAN) UP_SPAN.textContent = String(UPCOMING_HOURS);
 
-  if (UP_HOURS_SPAN) UP_HOURS_SPAN.textContent = String(UPCOMING_HOURS);
-
-  if (REFRESH_SELECT) {
-    // keep dropdown & schedule in sync
-    if ([5000,8000,15000,30000].includes(refreshMs)) {
-      REFRESH_SELECT.value = String(refreshMs);
-    }
-    REFRESH_SELECT.addEventListener("change", () => {
-      refreshMs = Number(REFRESH_SELECT.value || 15000);
-      schedule(); // reschedule with new cadence
+  if (REFRESH) {
+    REFRESH.value = String(refreshMs);
+    REFRESH.addEventListener("change", () => {
+      refreshMs = Number(REFRESH.value);
+      schedule();
     });
   }
-
   if (TEAM_PIN && TEAM_BADGE) {
     TEAM_BADGE.hidden = false;
     TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
   }
 
-  // ---- Small helpers ----
+  // ---- Small utils ----
+  const pad2 = (n)=> String(n).padStart(2,"0");
+  const tHHMM = (dOrStr)=>{
+    const d = typeof dOrStr === "string" ? new Date(dOrStr) : dOrStr;
+    if (Number.isNaN(d.getTime())) return "--:--";
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
   function setLastUpdated(note) {
-    const noteStr = note ? ` (${note})` : "";
-    LAST && (LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr);
+    const extra = note ? ` (${note})` : "";
+    if (LAST) LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + extra;
   }
 
-  function pad2(n){ return n < 10 ? "0"+n : ""+n; }
-  function fmtTime(ts) {
-    try {
-      const d = new Date(ts);
-      if (isNaN(+d)) return "";
-      return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
-    } catch { return ""; }
-  }
-
-  function escapeHtml(s=""){
-    return String(s)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#39;");
-  }
-
-  // ---- Safari-safe fetch with timeout and optional outer abort mirroring ----
-  async function fetchJSONWithTimeout(url, { timeout = 12000, signal: outerSignal } = {}) {
+  // ---- Safari-safe fetch with timeout ----
+  async function fetchJSONWithTimeout(url, { timeout = 12000, signal } = {}) {
     const ctrl = new AbortController();
-
-    // Mirror caller's signal (if provided)
-    if (outerSignal) {
-      if (outerSignal.aborted) {
-        ctrl.abort(outerSignal.reason);
-      } else {
-        const onAbort = () => ctrl.abort(outerSignal.reason);
-        outerSignal.addEventListener("abort", onAbort, { once: true });
-        ctrl.signal.addEventListener("abort", () => {
-          outerSignal.removeEventListener("abort", onAbort);
-        }, { once: true });
-      }
+    const onAbort = () => ctrl.abort();
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    const t = setTimeout(() => ctrl.abort(new DOMException("Timeout","AbortError")), timeout);
-
+    const timer = setTimeout(() => ctrl.abort(), timeout);
     try {
       const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } finally {
-      clearTimeout(t);
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
     }
   }
 
-  // ---- Data normalizer (works with proxy shapes we’ve seen) ----
-  function normTeamEntry(t) {
-    // team may be Team, TeamRelation, or TeamParticipant.baseInfo
-    if (!t) return { name: "", logo: "", short: "" };
-    const base = t.baseInfo || t;
-    return {
-      name: base.name || base.nameShortened || "",
-      short: base.nameShortened || "",
-      logo: base.logoUrl || ""
-    };
+  // ---- Normalizer (robust to varying shapes) ----
+  function readTeamName(x) {
+    if (!x) return "";
+    if (typeof x === "string") return x;
+    if (x.name) return x.name;
+    if (x.baseInfo && x.baseInfo.name) return x.baseInfo.name;
+    return "";
+  }
+  function readTeamLogo(x) {
+    if (!x) return "";
+    if (x.logoUrl) return x.logoUrl;
+    if (x.baseInfo && x.baseInfo.logoUrl) return x.baseInfo.logoUrl;
+    return "";
+  }
+  function readEvent(item) {
+    // event/tournament/title fallbacks
+    return (
+      (item.event && item.event.name) ||
+      (item.tournament && (item.tournament.name || item.tournament.title && item.tournament.title.name)) ||
+      (item.title && item.title.name) ||
+      ""
+    );
+  }
+  function readFormat(item) {
+    const f = item.format;
+    if (!f) return "";
+    if (typeof f === "string") return f.toUpperCase().startsWith("BO") ? f.toUpperCase() : `BO${f}`;
+    if (typeof f === "number") return `BO${f}`;
+    if (f.nameShortened) return f.nameShortened.toUpperCase();
+    if (f.name) return f.name.toUpperCase();
+    if (f.id) return `BO${f.id}`;
+    return "";
   }
 
-  function normalize(items = [], isLive) {
-    return items.map(it => {
-      // format (BOx)
-      let bo = "";
-      if (it.format && (it.format.nameShortened || it.format.name)) {
-        bo = String(it.format.nameShortened || it.format.name);
-      } else if (it.format) {
-        bo = String(it.format);
-      }
+  function normalize(items, isLive) {
+    return (items || []).map((it) => {
+      const teamsRaw = Array.isArray(it.teams) ? it.teams : (it.teams || []);
+      const nameA = readTeamName(teamsRaw[0]) || "TBD";
+      const nameB = readTeamName(teamsRaw[1]) || "TBD";
+      const logoA = readTeamLogo(teamsRaw[0]);
+      const logoB = readTeamLogo(teamsRaw[1]);
 
-      // event/tournament name
-      const eventName = (it.tournament && (it.tournament.nameShortened || it.tournament.name))
-                      || (it.event && it.event.name)
-                      || "";
+      const event = readEvent(it);
+      const when  = it.time || it.startTimeScheduled || it.start || it.startTime || "";
+      const fmt   = readFormat(it);
 
-      // time (scheduled or provided)
-      const when = it.startTimeScheduled || it.time || "";
-
-      // teams (array)
-      let teams = [];
-      if (Array.isArray(it.teams)) {
-        teams = it.teams.map(normTeamEntry);
-      } else if (it.teamA || it.teamB) {
-        teams = [normTeamEntry(it.teamA), normTeamEntry(it.teamB)];
-      }
-
-      // some feeds include “players”, ignore here
       return {
-        id: String(it.id || ""),
-        event: eventName,
-        bo,
+        id: String(it.id ?? `${event}-${when}-${nameA}-${nameB}`),
+        event,
+        format: fmt || "",
         time: when,
         live: !!isLive,
-        teams
+        teams: [nameA, nameB],
+        logos: [logoA, logoB],
       };
     }).filter(x => x.id && x.time);
   }
 
-  // ---- Card renderer ----
-  function renderCard(m) {
-    const hasPin = TEAM_PIN && m.teams.some(t => (t.name || t.short).toLowerCase().includes(TEAM_PIN));
-    const card = document.createElement("div");
-    card.className = "card" + (m.live ? " live" : "") + (hasPin ? " pinned" : "");
-
-    // Header: event left, badges right
-    const header = document.createElement("div");
-    header.className = "card-h";
-    const left = document.createElement("div");
-    left.className = "event";
-    left.textContent = m.event || "—";
-
-    const right = document.createElement("div");
-    right.className = "badges";
-    const bo = document.createElement("span");
-    bo.className = "pill";
-    bo.textContent = m.bo ? m.bo : "BO?";
-    right.appendChild(bo);
-
-    if (m.live) {
-      const live = document.createElement("span");
-      live.className = "pill live-dot";
-      live.textContent = "LIVE";
-      right.appendChild(live);
-    }
-
-    const time = document.createElement("span");
-    time.className = "pill";
-    time.textContent = fmtTime(m.time) || "—";
-    right.appendChild(time);
-
-    header.appendChild(left);
-    header.appendChild(right);
-
-    // Body: two rows with logo + team name
-    const body = document.createElement("div");
-    body.className = "card-b";
-
-    for (let i = 0; i < 2; i++) {
-      const t = m.teams[i] || { name: "TBD", logo: "" };
-      const row = document.createElement("div");
-      row.className = "team-row";
-
-      const logo = document.createElement("div");
-      logo.className = "logo";
-      if (t.logo) {
-        const img = document.createElement("img");
-        img.loading = "lazy";
-        img.decoding = "async";
-        img.src = t.logo;
-        img.alt = (t.name || "logo");
-        // in case of broken logo
-        img.onerror = () => { logo.classList.add("logo-fallback"); logo.textContent = ""; };
-        logo.appendChild(img);
-      } else {
-        logo.classList.add("logo-fallback");
-      }
-
-      const name = document.createElement("div");
-      name.className = "team";
-      name.textContent = t.name || "TBD";
-
-      row.appendChild(logo);
-      row.appendChild(name);
-      body.appendChild(row);
-    }
-
-    card.appendChild(header);
-    card.appendChild(body);
-    return card;
+  // ---- Rendering ----
+  function logoImg(src) {
+    if (!src) return "";
+    const esc = String(src).replace(/"/g, "&quot;");
+    return `<img src="${esc}" alt="" loading="lazy">`;
   }
 
-  // ---- List renderer (build off-DOM, then swap; adds mild “updating” fade) ----
+  function renderCard(m) {
+    const topLeft  = m.event || "—";
+    const boPill   = m.format ? `<span class="pill">${m.format}</span>` : "";
+    const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
+    const timePill = `<span class="pill">${tHHMM(m.time)}</span>`;
+
+    return html(`
+      <div class="card${m.live ? " live" : ""}">
+        <div class="card-top">
+          <div class="event" title="${escapeHtml(topLeft)}">${escapeHtml(topLeft)}</div>
+          <div class="badges">${boPill}${livePill}${timePill}</div>
+        </div>
+
+        <div class="teams">
+          <div class="team-row">
+            <div class="team-logo">${logoImg(m.logos[0])}</div>
+            <div class="team-name">${escapeHtml(m.teams[0] || "TBD")}</div>
+          </div>
+          <div class="team-row">
+            <div class="team-logo">${logoImg(m.logos[1])}</div>
+            <div class="team-name">${escapeHtml(m.teams[1] || "TBD")}</div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  function html(s){ const tpl = document.createElement("template"); tpl.innerHTML = s.trim(); return tpl.content.firstElementChild; }
+
   function renderList(root, items, emptyText) {
     if (!root) return;
     const frag = document.createDocumentFragment();
@@ -240,114 +180,111 @@
     });
   }
 
-  // ---- First paint skeleton (only once) ----
-  function paintSkeleton() {
-    // minimal placeholders
-    const mk = () => {
-      const s = document.createElement("div");
-      s.className = "card skeleton";
-      s.innerHTML = `
-        <div class="card-h"><div class="event sk"></div><div class="badges"><span class="pill sk"></span><span class="pill sk"></span></div></div>
-        <div class="card-b"><div class="team-row"><div class="logo sk"></div><div class="team sk"></div></div><div class="team-row"><div class="logo sk"></div><div class="team sk"></div></div></div>
-      `;
-      return s;
-    };
-    const frag1 = document.createDocumentFragment();
-    const frag2 = document.createDocumentFragment();
-    for (let i=0;i<6;i++) frag1.appendChild(mk());
-    for (let i=0;i<6;i++) frag2.appendChild(mk());
-    LIST_LIVE && LIST_LIVE.replaceChildren(frag1);
-    LIST_UP && LIST_UP.replaceChildren(frag2);
-  }
-
-  let firstPaintDone = false;
+  // ---- Load + schedule ----
   let inFlightCtrl;
 
-  // ---- Core loader ----
   async function load() {
-    // cancel previous tick if still running
     if (inFlightCtrl) inFlightCtrl.abort();
     const ctrl = new AbortController();
     inFlightCtrl = ctrl;
 
     try {
-      if (!firstPaintDone) paintSkeleton();
+      // first paint a quick skeleton so the page feels alive
+      paintSkeleton();
 
       const [liveRes, upRes] = await Promise.all([
-        fetchJSONWithTimeout(`${API_BASE}/live`, { timeout: 15000, signal: ctrl.signal }),
-        fetchJSONWithTimeout(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { timeout: 15000, signal: ctrl.signal })
+        fetchJSONWithTimeout(`${API_BASE}/live`, { signal: ctrl.signal, timeout: 12000 }),
+        fetchJSONWithTimeout(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { signal: ctrl.signal, timeout: 12000 })
       ]);
 
-      // Some proxies return { ok:false, error:"..." }
-      if (liveRes && liveRes.ok === false) {
-        const msg = tryParseErrorNote(liveRes.error);
-        setLastUpdated(msg || "error");
-        return;
-      }
-      if (upRes && upRes.ok === false) {
-        const msg = tryParseErrorNote(upRes.error);
-        setLastUpdated(msg || "error");
+      if (ctrl.signal.aborted) return;
+
+      // Proxy contract: { ok:boolean, items:[...] } — be forgiving.
+      if (liveRes?.error === "ENHANCE_YOUR_CALM" || upRes?.error === "ENHANCE_YOUR_CALM") {
+        setLastUpdated("rate-limited");
         return;
       }
 
-      let live = normalize((liveRes && liveRes.items) || [], true);
-      let upcoming = normalize((upRes && upRes.items) || [], false);
+      let live = normalize(liveRes?.items || [], true);
+      let upcoming = normalize(upRes?.items || [], false);
 
-      // Pin weighting (pinned live items first)
+      // Sorting
+      const byTime = (a,b)=> new Date(a.time) - new Date(b.time);
+      live.sort(byTime); upcoming.sort(byTime);
+
+      // Optional pin
       if (TEAM_PIN) {
-        const has = (t) => (t.name || t.short).toLowerCase().includes(TEAM_PIN);
-        const score = (a, b) => {
-          const ap = a.teams.some(has) ? 1 : 0;
-          const bp = b.teams.some(has) ? 1 : 0;
-          if (ap !== bp) return bp - ap;
-          return new Date(a.time) - new Date(b.time);
-        };
-        live.sort(score);
-      } else {
-        live.sort((a,b)=> new Date(a.time) - new Date(b.time));
+        const pin = TEAM_PIN;
+        const pinScore = (m)=> m.teams.join(" ").toLowerCase().includes(pin) ? 1 : 0;
+        live.sort((a,b)=> pinScore(b)-pinScore(a) || byTime(a,b));
+        upcoming.sort(byTime);
       }
-      upcoming.sort((a,b)=> new Date(a.time) - new Date(b.time));
 
       if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UPCOMING > 0) upcoming = upcoming.slice(0, LIMIT_UPCOMING);
+      if (LIMIT_UP   > 0) upcoming = upcoming.slice(0, LIMIT_UP);
 
       renderList(LIST_LIVE, live, "No live matches right now.");
       renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
       setLastUpdated();
-      firstPaintDone = true;
     } catch (err) {
-      // If we aborted because a newer refresh started, ignore
       if (ctrl.signal.aborted) return;
       console.warn("[load] error:", err);
       setLastUpdated("error");
-      // Keep the previous DOM; we’ll try again next tick
+      // keep previous DOM
     }
   }
 
-  function tryParseErrorNote(raw) {
-    try {
-      if (!raw) return "";
-      // raw may be a stringified JSON, try to find detail
-      const s = String(raw);
-      if (s.includes("ENHANCE_YOUR_CALM")) return "rate-limited";
-      if (s.includes("TOO_MANY_REQUESTS")) return "rate-limited";
-      return "";
-    } catch { return ""; }
+  // Skeleton paint (very light)
+  function paintSkeleton() {
+    const skel = (n=4)=>{
+      const frag = document.createDocumentFragment();
+      for (let i=0;i<n;i++) {
+        const el = html(`
+          <div class="skel" aria-hidden="true">
+            <div class="shine"></div>
+            <div class="card-top" style="padding:12px">
+              <div class="bar" style="width:40%;height:12px"></div>
+              <div class="row">
+                <div class="bar" style="width:42px"></div>
+                <div class="bar" style="width:42px"></div>
+                <div class="bar" style="width:44px"></div>
+              </div>
+            </div>
+            <div class="teams" style="padding:0 12px 12px">
+              <div class="team-row"><div class="bar" style="width:28px;height:28px"></div><div class="bar" style="flex:1;height:12px"></div></div>
+              <div class="team-row"><div class="bar" style="width:28px;height:28px"></div><div class="bar" style="flex:1;height:12px"></div></div>
+            </div>
+          </div>`);
+        frag.appendChild(el);
+      }
+      return frag;
+    };
+    if (LIST_LIVE && LIST_LIVE.children.length === 0) LIST_LIVE.replaceChildren(skel(4));
+    if (LIST_UP   && LIST_UP.children.length   === 0) LIST_UP.replaceChildren(skel(3));
   }
 
-  // ---- Jittered scheduler (avoid sync & limits) ----
+  // Jitter the interval (avoid sync storms + rate limits)
   function nextInterval() {
-    const floor = Math.max(8000, refreshMs); // never below 8s
-    const jitter = Math.floor(Math.random() * 500); // +0–500ms
-    return floor + jitter;
+    const floor = 8000; // minimum refresh
+    const jitter = Math.floor(Math.random() * 500);
+    return Math.max(floor, refreshMs) + jitter;
   }
   let timer;
   function schedule() {
     if (timer) clearTimeout(timer);
-    load(); // immediate
+    load();
     timer = setTimeout(schedule, nextInterval());
   }
 
-  // kick things off
+  function escapeHtml(s="") {
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#39;");
+  }
+
+  // go
   schedule();
 })();
