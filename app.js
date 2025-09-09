@@ -40,29 +40,35 @@
     if (LAST) LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
   }
 
-  // ---------- helpers ----------
-  function escapeHtml(x) {
-    return String(x ?? "")
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+// ---------- helpers ----------
+function getTeamName(t) {
+  if (!t) return "";
+  // allow string or object
+  if (typeof t === "string") return t;
+  // common places team names live
+  return (
+    t.name ||
+    (t.baseInfo && (t.baseInfo.shortName || t.baseInfo.name)) ||
+    (t.team && t.team.name) ||
+    (t.org && t.org.name) ||
+    ""
+  );
+}
 
-  function safeTime(msOrIso) {
-    const d = new Date(msOrIso);
-    if (isNaN(d)) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
+function formatTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  async function fetchJSONWithTimeout(url, opts = {}, ms = 8000) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), ms);
-    try {
-      const res = await fetch(url, { ...opts, signal: ctrl.signal, cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } finally {
-      clearTimeout(t);
-    }
-  }
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
   // ---------- skeleton (instant first paint) ----------
   function skeletonCard() {
@@ -93,76 +99,93 @@
     fill(LIST_UP);
   }
 
-  // ---------- normalization ----------
-  function normOne(it, liveFlag) {
-    const teamsArr = Array.isArray(it.teams) ? it.teams : (it.teams || []);
-    const names = teamsArr.map(t => t?.name || t?.baseInfo?.name || "").filter(Boolean);
+// ---------- normalize ----------
+function normalize(items, isLive) {
+  return (items || [])
+    .map(it => {
+      const teamsRaw = Array.isArray(it.teams) ? it.teams : (it.teams || []);
+      const names = teamsRaw.map(getTeamName).filter(Boolean);
 
-    // Try common score shapes from your proxy (live only)
-    const sA = (it.scoreA ?? it.score1 ?? it.seriesScoreA ?? null);
-    const sB = (it.scoreB ?? it.score2 ?? it.seriesScoreB ?? null);
+      // competition / event name can be in a few places
+      const eventName =
+        (it.event && it.event.name) ||
+        (it.tournament && it.tournament.name) ||
+        (it.league && it.league.name) ||
+        it.event || it.tournament || "";
 
-    let format = "";
-    if (typeof it.format === "string") {
-      format = it.format; // e.g. "BO3"
-    } else if (it.format?.id) {
-      format = `BO${it.format.id}`; // GRID usually exposes 1/2/3/5
-    }
+      // best-of format
+      const fmt =
+        (it.format && (it.format.id || it.format.bestOf || it.format.maps)) ||
+        it.bestOf ||
+        it.maps ||
+        3;
 
-    const eventName =
-      it.event?.name ||
-      it.tournament?.name ||
-      it.tournament?.title?.name ||
-      "";
+      // scheduled/start time
+      const when = it.time || it.startTimeScheduled || it.start || "";
 
-    return {
-      id: String(it.id ?? ""),
-      timeIso: it.time || it.startTimeScheduled || "",
-      timeTxt: safeTime(it.time || it.startTimeScheduled),
-      event: eventName,
-      format,
-      teams: [names[0] || "TBD", names[1] || "TBD"],
-      live: !!liveFlag,
-      scoreA: (sA != null) ? Number(sA) : null,
-      scoreB: (sB != null) ? Number(sB) : null
-    };
-  }
+      // scores (many shapes exist; handle a couple safely)
+      let scores = null;
+      if (Array.isArray(it.scores) && it.scores.length === 2) {
+        scores = [it.scores[0] ?? null, it.scores[1] ?? null];
+      } else if (it.scoreA != null || it.scoreB != null) {
+        scores = [it.scoreA ?? null, it.scoreB ?? null];
+      } else if (it.result && Array.isArray(it.result)) {
+        scores = [it.result[0] ?? null, it.result[1] ?? null];
+      }
 
-  function normalize(list, liveFlag) {
-    return (Array.isArray(list) ? list : [])
-      .map(it => normOne(it, liveFlag))
-      .filter(x => x.id);
-  }
+      return {
+        id: String(it.id ?? ""),
+        event: eventName,
+        format: fmt,
+        time: when,
+        teams: [names[0] || "", names[1] || ""],
+        scores,
+        live: !!isLive
+      };
+    })
+    // keep only rows that have at least a time or a team
+    .filter(r => r.id && (r.teams[0] || r.teams[1] || r.time));
+}
 
-  // ---------- rendering ----------
-  function renderCard(m) {
-    const left  = escapeHtml(m.teams?.[0] || "TBD");
-    const right = escapeHtml(m.teams?.[1] || "TBD");
-    const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
-    const scoreHtml = (m.live && m.scoreA != null && m.scoreB != null)
-      ? `<div class="score-badge">${m.scoreA}&nbsp;–&nbsp;${m.scoreB}</div>`
-      : "";
+function renderCard(m) {
+  const a = escapeHtml(m.teams[0] || "TBD");
+  const b = escapeHtml(m.teams[1] || "TBD");
+  const scoreHtml = Array.isArray(m.scores)
+    ? `<span class="score">${m.scores[0] ?? ""}</span>
+       <span class="vs">–</span>
+       <span class="score">${m.scores[1] ?? ""}</span>`
+    : `<span class="vs">vs</span>`;
 
-    const card = document.createElement("div");
-    card.className = "card" + (m.live ? " live" : "");
-    card.innerHTML = `
-      <div class="card-top">
-        ${m.format ? `<span class="pill">${escapeHtml(m.format)}</span>` : ""}
-        ${livePill}
-        <span class="time">${escapeHtml(m.timeTxt || "")}</span>
-      </div>
-      <div class="card-body">
-        <div class="teams">
-          <div>${left}</div>
-          <div class="vs">vs</div>
-          <div>${right}</div>
-        </div>
+  const topRight =
+    `<div class="badges">
+       <span class="pill">BO${escapeHtml(m.format)}</span>
+       ${m.live ? '<span class="pill live-dot">LIVE</span>' : ""}
+       <span class="pill time">${escapeHtml(formatTime(m.time))}</span>
+     </div>`;
+
+  const topLeft =
+    `<div class="event">${escapeHtml(m.event || "")}</div>`;
+
+  const card = document.createElement("div");
+  card.className = "card" + (m.live ? " live" : "");
+
+  card.innerHTML = `
+    <div class="card-top">
+      ${topLeft}
+      ${topRight}
+    </div>
+
+    <div class="card-body">
+      <div class="teams">
+        <div class="team">${a}</div>
         ${scoreHtml}
-        <div class="event">${escapeHtml(m.event || "")}</div>
+        <div class="team">${b}</div>
       </div>
-    `;
-    return card;
-  }
+    </div>
+  `;
+
+  return card;
+}
 
   function renderList(root, items, emptyText) {
     if (!root) return;
