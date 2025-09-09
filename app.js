@@ -1,9 +1,8 @@
-// app.js — Safari-safe fetch + robust normalizer + tidy cards
+// app.js — Safari-safe fetch + robust normalizer + logos + scores
 (function () {
   const ROOT = document.getElementById("matchesRoot");
   if (!ROOT) return;
 
-  // ---- DOM ----
   const LIST_LIVE = document.getElementById("listLive");
   const LIST_UP   = document.getElementById("listUpcoming");
   const LAST      = document.getElementById("lastUpdated");
@@ -11,7 +10,6 @@
   const TEAM_BADGE= document.getElementById("teamBadge");
   const UP_SPAN   = document.getElementById("upHoursSpan");
 
-  // ---- Config from HTML data-* ----
   const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
   const urlParams = new URLSearchParams(location.search);
 
@@ -34,145 +32,88 @@
     TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
   }
 
-  // ---- Small utils ----
-  const pad2 = (n)=> String(n).padStart(2,"0");
-  const tHHMM = (dOrStr)=>{
-    const d = typeof dOrStr === "string" ? new Date(dOrStr) : dOrStr;
-    if (Number.isNaN(d.getTime())) return "--:--";
-    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const pad2 = n => String(n).padStart(2, "0");
+  const tHHMM = dOrStr => {
+    const d = new Date(dOrStr);
+    return Number.isNaN(d.getTime()) ? "--:--" : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
   function setLastUpdated(note) {
-    const extra = note ? ` (${note})` : "";
-    if (LAST) LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + extra;
+    if (LAST) LAST.textContent =
+      "Last updated: " + new Date().toLocaleTimeString() + (note ? ` (${note})` : "");
   }
 
-  // ---- Safari-safe fetch with timeout ----
-  async function fetchJSONWithTimeout(url, { timeout = 12000, signal } = {}) {
-    const ctrl = new AbortController();
-    const onAbort = () => ctrl.abort();
-    if (signal) {
-      if (signal.aborted) ctrl.abort();
-      else signal.addEventListener("abort", onAbort, { once: true });
-    }
+  // ---- Normalizers ----
+  const readTeamName = t =>
+    (t && (t.name || (t.baseInfo && t.baseInfo.name))) || "TBD";
+  const readTeamLogo = t =>
+    (t && (t.logoUrl || (t.baseInfo && t.baseInfo.logoUrl))) || "";
+  const readEvent = s =>
+    (s.tournament && (s.tournament.name || (s.tournament.title && s.tournament.title.name))) ||
+    (s.title && s.title.name) ||
+    "—";
 
-    const timer = setTimeout(() => ctrl.abort(), timeout);
-    try {
-      const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-    }
-  }
-
-  // ---- Normalizer (robust to varying shapes) ----
-  function readTeamName(x) {
-    if (!x) return "";
-    if (typeof x === "string") return x;
-    if (x.name) return x.name;
-    if (x.baseInfo && x.baseInfo.name) return x.baseInfo.name;
-    return "";
-  }
-  function readTeamLogo(x) {
-    if (!x) return "";
-    if (x.logoUrl) return x.logoUrl;
-    if (x.baseInfo && x.baseInfo.logoUrl) return x.baseInfo.logoUrl;
-    return "";
-  }
-  function readEvent(item) {
-    // event/tournament/title fallbacks
-    return (
-      (item.event && item.event.name) ||
-      (item.tournament && (item.tournament.name || item.tournament.title && item.tournament.title.name)) ||
-      (item.title && item.title.name) ||
-      ""
-    );
-  }
-  function readFormat(item) {
-    const f = item.format;
-    if (!f) return "";
-    if (typeof f === "string") return f.toUpperCase().startsWith("BO") ? f.toUpperCase() : `BO${f}`;
-    if (typeof f === "number") return `BO${f}`;
-    if (f.nameShortened) return f.nameShortened.toUpperCase();
-    if (f.name) return f.name.toUpperCase();
-    if (f.id) return `BO${f.id}`;
-    return "";
-  }
-
-  function normalize(items, isLive) {
-    return (items || []).map((it) => {
-      const teamsRaw = Array.isArray(it.teams) ? it.teams : (it.teams || []);
-      const nameA = readTeamName(teamsRaw[0]) || "TBD";
-      const nameB = readTeamName(teamsRaw[1]) || "TBD";
-      const logoA = readTeamLogo(teamsRaw[0]);
-      const logoB = readTeamLogo(teamsRaw[1]);
-
-      const event = readEvent(it);
-      const when  = it.time || it.startTimeScheduled || it.start || it.startTime || "";
-      const fmt   = readFormat(it);
-
+  function normalize(series, isLive) {
+    return (series || []).map(s => {
+      const teams = (s.teams || []).map(t => ({
+        name: readTeamName(t),
+        logo: readTeamLogo(t),
+        score: t.scoreAdvantage || 0,
+      }));
       return {
-        id: String(it.id ?? `${event}-${when}-${nameA}-${nameB}`),
-        event,
-        format: fmt || "",
-        time: when,
-        live: !!isLive,
-        teams: [nameA, nameB],
-        logos: [logoA, logoB],
+        id: String(s.id),
+        event: readEvent(s),
+        format: s.format && (s.format.nameShortened || s.format.name) || "",
+        time: s.startTimeScheduled,
+        teams,
+        live: isLive
       };
-    }).filter(x => x.id && x.time);
+    });
   }
 
-  // ---- Rendering ----
-  function logoImg(src) {
-    if (!src) return "";
-    const esc = String(src).replace(/"/g, "&quot;");
-    return `<img src="${esc}" alt="" loading="lazy">`;
-  }
-
+  // ---- Renderer ----
   function renderCard(m) {
-    const topLeft  = m.event || "—";
-    const boPill   = m.format ? `<span class="pill">${m.format}</span>` : "";
-    const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
-    const timePill = `<span class="pill">${tHHMM(m.time)}</span>`;
+    const card = document.createElement("div");
+    card.className = "card" + (m.live ? " live" : "");
 
-    return html(`
-      <div class="card${m.live ? " live" : ""}">
-        <div class="card-top">
-          <div class="event" title="${escapeHtml(topLeft)}">${escapeHtml(topLeft)}</div>
-          <div class="badges">${boPill}${livePill}${timePill}</div>
-        </div>
-
-        <div class="teams">
-          <div class="team-row">
-            <div class="team-logo">${logoImg(m.logos[0])}</div>
-            <div class="team-name">${escapeHtml(m.teams[0] || "TBD")}</div>
-          </div>
-          <div class="team-row">
-            <div class="team-logo">${logoImg(m.logos[1])}</div>
-            <div class="team-name">${escapeHtml(m.teams[1] || "TBD")}</div>
-          </div>
-        </div>
+    const top = document.createElement("div");
+    top.className = "card-top";
+    top.innerHTML = `
+      <div class="event">${m.event}</div>
+      <div class="badges">
+        <span class="pill">BO${m.format || "?"}</span>
+        ${m.live ? '<span class="pill live-dot">LIVE</span>' : ""}
+        <span class="pill">${tHHMM(m.time)}</span>
       </div>
-    `);
-  }
+    `;
 
-  function html(s){ const tpl = document.createElement("template"); tpl.innerHTML = s.trim(); return tpl.content.firstElementChild; }
+    const teams = document.createElement("div");
+    teams.className = "teams";
+    for (const t of m.teams) {
+      const row = document.createElement("div");
+      row.className = "team-row";
+      row.innerHTML = `
+        <div class="team-logo">${t.logo ? `<img src="${t.logo}" alt="${t.name}">` : ""}</div>
+        <div class="team-name">${t.name} <span class="score">${t.score}</span></div>
+      `;
+      teams.appendChild(row);
+    }
+
+    card.appendChild(top);
+    card.appendChild(teams);
+    return card;
+  }
 
   function renderList(root, items, emptyText) {
     if (!root) return;
     const frag = document.createDocumentFragment();
-
-    if (!items || items.length === 0) {
+    if (!items.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.textContent = emptyText;
       frag.appendChild(empty);
     } else {
-      for (const m of items) frag.appendChild(renderCard(m));
+      items.forEach(m => frag.appendChild(renderCard(m)));
     }
-
     root.classList.add("updating");
     requestAnimationFrame(() => {
       root.replaceChildren(frag);
@@ -180,111 +121,43 @@
     });
   }
 
-  // ---- Load + schedule ----
+  // ---- Loader ----
   let inFlightCtrl;
-
   async function load() {
     if (inFlightCtrl) inFlightCtrl.abort();
     const ctrl = new AbortController();
     inFlightCtrl = ctrl;
-
     try {
-      // first paint a quick skeleton so the page feels alive
-      paintSkeleton();
-
       const [liveRes, upRes] = await Promise.all([
-        fetchJSONWithTimeout(`${API_BASE}/live`, { signal: ctrl.signal, timeout: 12000 }),
-        fetchJSONWithTimeout(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { signal: ctrl.signal, timeout: 12000 })
+        fetch(`${API_BASE}/live`, { signal: ctrl.signal }).then(r => r.json()),
+        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { signal: ctrl.signal }).then(r => r.json())
       ]);
-
       if (ctrl.signal.aborted) return;
+      let live = normalize(liveRes.items || [], true);
+      let upcoming = normalize(upRes.items || [], false);
 
-      // Proxy contract: { ok:boolean, items:[...] } — be forgiving.
-      if (liveRes?.error === "ENHANCE_YOUR_CALM" || upRes?.error === "ENHANCE_YOUR_CALM") {
-        setLastUpdated("rate-limited");
-        return;
-      }
-
-      let live = normalize(liveRes?.items || [], true);
-      let upcoming = normalize(upRes?.items || [], false);
-
-      // Sorting
-      const byTime = (a,b)=> new Date(a.time) - new Date(b.time);
-      live.sort(byTime); upcoming.sort(byTime);
-
-      // Optional pin
       if (TEAM_PIN) {
         const pin = TEAM_PIN;
-        const pinScore = (m)=> m.teams.join(" ").toLowerCase().includes(pin) ? 1 : 0;
-        live.sort((a,b)=> pinScore(b)-pinScore(a) || byTime(a,b));
-        upcoming.sort(byTime);
+        live.sort((a,b)=>b.teams.some(t=>t.name.toLowerCase().includes(pin)) - a.teams.some(t=>t.name.toLowerCase().includes(pin)));
+        upcoming.sort((a,b)=>new Date(a.time)-new Date(b.time));
       }
 
-      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UP   > 0) upcoming = upcoming.slice(0, LIMIT_UP);
+      if (LIMIT_LIVE) live = live.slice(0, LIMIT_LIVE);
+      if (LIMIT_UP) upcoming = upcoming.slice(0, LIMIT_UP);
 
       renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
+      renderList(LIST_UP, upcoming, "No upcoming matches in window.");
       setLastUpdated();
-    } catch (err) {
-      if (ctrl.signal.aborted) return;
-      console.warn("[load] error:", err);
-      setLastUpdated("error");
-      // keep previous DOM
-    }
+    } catch(e){ if(!ctrl.signal.aborted) console.error(e); }
   }
 
-  // Skeleton paint (very light)
-  function paintSkeleton() {
-    const skel = (n=4)=>{
-      const frag = document.createDocumentFragment();
-      for (let i=0;i<n;i++) {
-        const el = html(`
-          <div class="skel" aria-hidden="true">
-            <div class="shine"></div>
-            <div class="card-top" style="padding:12px">
-              <div class="bar" style="width:40%;height:12px"></div>
-              <div class="row">
-                <div class="bar" style="width:42px"></div>
-                <div class="bar" style="width:42px"></div>
-                <div class="bar" style="width:44px"></div>
-              </div>
-            </div>
-            <div class="teams" style="padding:0 12px 12px">
-              <div class="team-row"><div class="bar" style="width:28px;height:28px"></div><div class="bar" style="flex:1;height:12px"></div></div>
-              <div class="team-row"><div class="bar" style="width:28px;height:28px"></div><div class="bar" style="flex:1;height:12px"></div></div>
-            </div>
-          </div>`);
-        frag.appendChild(el);
-      }
-      return frag;
-    };
-    if (LIST_LIVE && LIST_LIVE.children.length === 0) LIST_LIVE.replaceChildren(skel(4));
-    if (LIST_UP   && LIST_UP.children.length   === 0) LIST_UP.replaceChildren(skel(3));
-  }
-
-  // Jitter the interval (avoid sync storms + rate limits)
-  function nextInterval() {
-    const floor = 8000; // minimum refresh
-    const jitter = Math.floor(Math.random() * 500);
-    return Math.max(floor, refreshMs) + jitter;
-  }
+  // ---- Scheduler with jitter ----
+  function nextInterval(){ return Math.max(8000, refreshMs) + Math.random()*500; }
   let timer;
-  function schedule() {
+  function schedule(){
     if (timer) clearTimeout(timer);
     load();
     timer = setTimeout(schedule, nextInterval());
   }
-
-  function escapeHtml(s="") {
-    return String(s)
-      .replaceAll("&","&amp;")
-      .replaceAll("<","&lt;")
-      .replaceAll(">","&gt;")
-      .replaceAll('"',"&quot;")
-      .replaceAll("'","&#39;");
-  }
-
-  // go
   schedule();
 })();
