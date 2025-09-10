@@ -647,3 +647,10 @@ function closeModal() {
     restoreFocusEl = null;
   }
 }
+
+// -- expose a couple of helpers for debugging (optional) --
+window.__GRID_APP__ = window.__GRID_APP__ || {};
+window.__GRID_APP__.closeModal = closeModal;
+
+// ===== end of file / close the top-level IIFE =====
+})(); 
