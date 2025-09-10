@@ -51,82 +51,43 @@
 
   const UTIL = (window.__GRID_APP__ && window.__GRID_APP__.UTIL) || {};
 
-  // ----- Utilities -----
-  const g = (obj, path, dflt=undefined) => {
-    try {
-      return path.split(".").reduce((o,k) => (o==null?o:o[k]), obj) ?? dflt;
-    } catch { return dflt; }
-  };
+// ----- Utilities (namespaced + guarded) -----
+UTIL.g = UTIL.g || function g(obj, path, dflt = undefined) {
+  try {
+    return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj) ?? dflt;
+  } catch {
+    return dflt;
+  }
+};
 
-  const clamp = (n,min,max)=>Math.max(min,Math.min(max,n));
+UTIL.clamp = UTIL.clamp || function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+};
 
-  const fmtTime = (iso) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    const now = new Date();
-    // Same day -> show time, otherwise short date
-    const sameDay = d.toDateString() === now.toDateString();
-    return sameDay
-      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : d.toLocaleDateString([], { month: "short", day: "2-digit" });
-  };
+UTIL.fmtTime = UTIL.fmtTime || function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString([], { month: "short", day: "2-digit" });
+};
 
-  const relative = (iso) => {
-    if (!iso) return "";
-    const d = new Date(iso).getTime();
-    const now = Date.now();
-    const diff = Math.round((d - now)/1000);
-    const abs = Math.abs(diff);
-    const unit = abs>=3600 ? "h" : abs>=60 ? "m" : "s";
-    const val = unit==="h" ? Math.round(abs/3600) : unit==="m" ? Math.round(abs/60) : abs;
-    return diff>=0 ? `in ${val}${unit}` : `${val}${unit} ago`;
-  };
+UTIL.relative = UTIL.relative || function relative(iso) {
+  if (!iso) return "";
+  const d = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = Math.round((d - now) / 1000);
+  const abs = Math.abs(diff);
+  const unit = abs >= 3600 ? "h" : abs >= 60 ? "m" : "s";
+  const val = unit === "h" ? Math.round(abs / 3600) : unit === "m" ? Math.round(abs / 60) : abs;
+  return diff >= 0 ? `in ${val}${unit}` : `${val}${unit} ago`;
+};
 
-  const boShort = (seriesFormat) => {
-    // format may be "Bo3" or object { nameShortened: "Bo3" } or id number
-    if (!seriesFormat) return "Bo?";
-    if (typeof seriesFormat === "string" && /^bo\d$/i.test(seriesFormat)) return seriesFormat;
-    const short = g(seriesFormat, "nameShortened") || g(seriesFormat, "name");
-    if (short) return short.replace(/best[-\s]*of[-\s]*/i, "Bo");
-    const id = String(g(seriesFormat, "id") ?? "");
-    if (id && /^\d+$/.test(id)) return `Bo${id}`;
-    return "Bo?";
-  };
-
-  const pickLogo = (team) => {
-    // Accept many shapes: team.logoUrl, team.baseInfo.logoUrl, team.logo, etc.
-    return (
-      g(team, "logoUrl") ||
-      g(team, "baseInfo.logoUrl") ||
-      g(team, "baseInfo.logo") ||
-      g(team, "logo") ||
-      "https://cdn.grid.gg/assets/team-logos/generic"
-    );
-  };
-
-  const pickTeamName = (team) => {
-    return (
-      g(team, "name") ||
-      g(team, "baseInfo.name") ||
-      g(team, "baseInfo.shortName") ||
-      g(team, "nameShortened") ||
-      "TBD"
-    );
-  };
-
-  const safeTournament = (node) => {
-    const t = g(node, "tournament") || {};
-    return {
-      name: t.name || t.nameShortened || "—",
-      logo: t.logoUrl || "https://cdn.grid.gg/assets/tournament-logos/generic"
-    };
-  };
-
-  const setLastUpdated = (note) => {
-    if (!LAST) return;
-    const noteStr = note ? ` (${note})` : "";
-    LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
-  };
+// Expose the UTIL bag back onto the global for later re-use
+window.__GRID_APP__ = window.__GRID_APP__ || {};
+window.__GRID_APP__.UTIL = UTIL;
 
   // ----- Skeletons -----
   const renderSkeletons = (root, count=6) => {
@@ -346,11 +307,6 @@ if (!UTIL.fmtBO) {
     return (format?.nameShortened || format?.name || "BO?").toUpperCase();
   };
 }
-
-// convenience local aliases (no re-declare as functions)
-const fmtTime = UTIL.fmtTime;
-const fmtRel  = UTIL.fmtRel;
-const fmtBO   = UTIL.fmtBO;
 
 // ---------- list renderer ----------
 function renderList(root, items, emptyText) {
