@@ -306,39 +306,51 @@ schedule();
 // Part 3 — Render UI + Details Modal
 // ----------------------
 
-// ---------- small formatters ----------
-function fmtTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  // "Wed, 14:05" in user’s locale
-  return d.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+// ---------- small formatters (define-once) ----------
+if (!UTIL.fmtTime) {
+  UTIL.fmtTime = function fmtTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    // e.g. "Wed, 14:05" in user's locale
+    return d.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  };
 }
-function fmtRel(iso) {
-  if (!iso) return "";
-  const d = new Date(iso).getTime();
-  const now = Date.now();
-  const ms = d - now;
-  const abs = Math.abs(ms);
-  const mins = Math.round(abs / 60000);
-  if (mins < 1) return "now";
-  const hrs = Math.floor(mins / 60);
-  const rem = mins % 60;
-  const sign = ms >= 0 ? "in " : "";
-  const tail = ms < 0 ? " ago" : "";
-  if (hrs >= 1) return `${sign}${hrs}h ${rem}m${tail}`;
-  return `${sign}${mins}m${tail}`;
+
+if (!UTIL.fmtRel) {
+  UTIL.fmtRel = function fmtRel(iso) {
+    if (!iso) return "";
+    const d   = new Date(iso).getTime();
+    const now = Date.now();
+    const ms  = d - now;
+    const abs = Math.abs(ms);
+    const mins = Math.round(abs / 60000);
+    if (mins < 1)  return "now";
+    const hrs  = Math.floor(mins / 60);
+    const rem  = mins % 60;
+    const sign = ms >= 0 ? "in " : "";
+    const tail = ms < 0 ? " ago" : "";
+    if (hrs >= 1) return `${sign}${hrs}h ${rem}m${tail}`;
+    return `${sign}${mins}m${tail}`;
+  };
 }
-function fmtBO(format) {
-  const s = format?.nameShortened || "";
-  if (/^bo\d+/i.test(s)) return s.toUpperCase();
-  return s || (format?.name ? format.name.replace(/best-of-/i, "Bo") : "");
+
+if (!UTIL.fmtBO) {
+  UTIL.fmtBO = function fmtBO(format) {
+    const s = (format?.nameShortened || format?.name || "").toLowerCase();
+    if (s.includes("bo1")) return "BO1";
+    if (s.includes("bo2")) return "BO2";
+    if (s.includes("bo3")) return "BO3";
+    if (s.includes("bo5")) return "BO5";
+    if (s.includes("bo7")) return "BO7";
+    if (s.includes("score-after")) return (format.nameShortened || s).toUpperCase();
+    return (format?.nameShortened || format?.name || "BO?").toUpperCase();
+  };
 }
-function safe(str) {
-  return String(str || "");
-}
-function hasScore(teams) {
-  return Array.isArray(teams) && teams.some(t => (t?.score || 0) > 0);
-}
+
+// convenience local aliases (no re-declare as functions)
+const fmtTime = UTIL.fmtTime;
+const fmtRel  = UTIL.fmtRel;
+const fmtBO   = UTIL.fmtBO;
 
 // ---------- list renderer ----------
 function renderList(root, items, emptyText) {
