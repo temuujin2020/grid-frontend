@@ -49,6 +49,8 @@
     TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
   }
 
+  const UTIL = (window.__GRID_APP__ && window.__GRID_APP__.UTIL) || {};
+
   // ----- Utilities -----
   const g = (obj, path, dflt=undefined) => {
     try {
@@ -365,7 +367,7 @@ function renderCard(m) {
   const tournamentLogo = safe(m.tournament?.logoUrl);
   const isLive = !!m.live;
   const bo = fmtBO(m.format);
-  const timeLabel = fmtTime(m.time);
+  const timeLabel = UTIL.fmtTime(m.time);
   const rel = fmtRel(m.time);
   const showInlineScore = hasScore(m.teams);
 
@@ -563,7 +565,7 @@ function openDetailsModal(m, openerEl) {
   if (m.time) {
     const when = document.createElement("span");
     when.className = "pill";
-    when.textContent = `${fmtTime(m.time)} · ${fmtRel(m.time)}`;
+    when.textContent = `${UTIL.fmtTime(m.time)} · ${fmtRel(m.time)}`;
     right.appendChild(when);
   }
 
