@@ -1,11 +1,15 @@
-// Matches UI — flicker free, with expandable cards & conditional “lead”
-// Uses your Render proxy: /api/series/live and /api/series/upcoming
+/* ============================================================================
+   GRID Frontend — Advanced JS (Part 1/3)
+   - Bootstrapping, Config, DOM refs
+   - Utilities (safe getters, time, BO mapping, logo picking)
+   - Skeleton card template
+   ============================================================================ */
 
-(function () {
+(() => {
+  // ----- DOM roots -----
   const ROOT = document.getElementById("matchesRoot");
   if (!ROOT) return;
 
-  const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
   const LIST_LIVE = document.getElementById("listLive");
   const LIST_UP   = document.getElementById("listUpcoming");
   const LAST      = document.getElementById("lastUpdated");
@@ -13,290 +17,663 @@
   const TEAM_BADGE = document.getElementById("teamBadge");
   const UP_HOURS_SPAN = document.getElementById("upHoursSpan");
 
+  // ----- Config -----
+  const API_BASE = (ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series").replace(/\/+$/,"");
   const urlParams = new URLSearchParams(location.search);
+
+  // NOTE: you set 30s in HTML; we enforce a sensible floor + jitter later.
+  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
+  let backoffMs = 0; // grows on 429 / ENHANCE_YOUR_CALM
   const TEAM_PIN = (urlParams.get("team") || "").trim().toLowerCase();
   const LIMIT_LIVE = Number(urlParams.get("limitLive") || 0);
-  const LIMIT_UP = Number(urlParams.get("limitUpcoming") || 0);
+  const LIMIT_UP   = Number(urlParams.get("limitUpcoming") || 0);
   const UPCOMING_HOURS = Number(urlParams.get("hoursUpcoming") || 24);
+
   if (UP_HOURS_SPAN) UP_HOURS_SPAN.textContent = String(UPCOMING_HOURS);
 
-  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
+  // Wire the refresh selector if present
   if (REFRESH_SELECT) {
-    REFRESH_SELECT.value = String(refreshMs);
+    // Prefer data-refresh if it matches one of the options
+    const optVal = String(refreshMs);
+    if ([...REFRESH_SELECT.options].some(o => o.value === optVal)) {
+      REFRESH_SELECT.value = optVal;
+    }
     REFRESH_SELECT.addEventListener("change", () => {
       refreshMs = Number(REFRESH_SELECT.value);
-      schedule();
+      schedule(); // re-arm the timer
     });
   }
+
   if (TEAM_PIN && TEAM_BADGE) {
     TEAM_BADGE.hidden = false;
     TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
   }
 
-  function setLastUpdated(note) {
-    if (!LAST) return;
-    LAST.textContent =
-      "Last updated: " + new Date().toLocaleTimeString() + (note ? ` (${note})` : "");
-  }
+  // ----- Utilities -----
+  const g = (obj, path, dflt=undefined) => {
+    try {
+      return path.split(".").reduce((o,k) => (o==null?o:o[k]), obj) ?? dflt;
+    } catch { return dflt; }
+  };
 
-  // ---------- Robust field helpers ----------
-  function pick(...vals) {
-    for (const v of vals) if (v != null && v !== "") return v;
-    return undefined;
-  }
-  function asDate(val) {
-    const d = val ? new Date(val) : null;
-    return isNaN(d?.getTime?.()) ? null : d;
-  }
-  function fmtTimeLocal(val) {
-    const d = asDate(val);
-    return d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
-  }
-  function fmtDateLocal(val) {
-    const d = asDate(val);
-    return d ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "TBD";
-  }
-  function teamName(t) {
-    return pick(t?.name, t?.baseInfo?.name, t?.team?.name, t?.baseInfo?.title?.name) || "TBD";
-  }
-  function teamLogo(t) {
-    return pick(t?.logoUrl, t?.baseInfo?.logoUrl, t?.team?.logoUrl);
-  }
-  function teamScoreAdvantage(t) {
-    const raw = pick(t?.scoreAdvantage, t?.score);
-    return Number.isFinite(Number(raw)) ? Number(raw) : 0;
-  }
-  function formatShort(f) {
-    if (!f) return "BO?";
-    return pick(f?.nameShortened, f?.name, (f?.id != null ? `Bo${f.id}` : null)) || "BO?";
-  }
-  function tournamentName(m) {
-    return pick(m?.tournament?.name, m?.event?.name, m?.event, m?.tournamentName) || "—";
-  }
-  function isLive(m) {
-    // live list is from /live; upcoming is from /upcoming — but keep a fallback flag
-    return !!m._live;
-  }
+  const clamp = (n,min,max)=>Math.max(min,Math.min(max,n));
 
-  // Normalize one series-like object into the shape we render
-  function normalizeOne(it, liveFlag=false) {
-    const teamsArr = Array.isArray(it?.teams) ? it.teams : [];
-    const t1 = teamsArr[0] || {};
-    const t2 = teamsArr[1] || {};
+  const fmtTime = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    // Same day -> show time, otherwise short date
+    const sameDay = d.toDateString() === now.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString([], { month: "short", day: "2-digit" });
+  };
 
-    const teamA = {
-      name: teamName(t1),
-      logo: teamLogo(t1),
-      lead: teamScoreAdvantage(t1) // show only if > 0
-    };
-    const teamB = {
-      name: teamName(t2),
-      logo: teamLogo(t2),
-      lead: teamScoreAdvantage(t2)
-    };
+  const relative = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso).getTime();
+    const now = Date.now();
+    const diff = Math.round((d - now)/1000);
+    const abs = Math.abs(diff);
+    const unit = abs>=3600 ? "h" : abs>=60 ? "m" : "s";
+    const val = unit==="h" ? Math.round(abs/3600) : unit==="m" ? Math.round(abs/60) : abs;
+    return diff>=0 ? `in ${val}${unit}` : `${val}${unit} ago`;
+  };
 
+  const boShort = (seriesFormat) => {
+    // format may be "Bo3" or object { nameShortened: "Bo3" } or id number
+    if (!seriesFormat) return "Bo?";
+    if (typeof seriesFormat === "string" && /^bo\d$/i.test(seriesFormat)) return seriesFormat;
+    const short = g(seriesFormat, "nameShortened") || g(seriesFormat, "name");
+    if (short) return short.replace(/best[-\s]*of[-\s]*/i, "Bo");
+    const id = String(g(seriesFormat, "id") ?? "");
+    if (id && /^\d+$/.test(id)) return `Bo${id}`;
+    return "Bo?";
+  };
+
+  const pickLogo = (team) => {
+    // Accept many shapes: team.logoUrl, team.baseInfo.logoUrl, team.logo, etc.
+    return (
+      g(team, "logoUrl") ||
+      g(team, "baseInfo.logoUrl") ||
+      g(team, "baseInfo.logo") ||
+      g(team, "logo") ||
+      "https://cdn.grid.gg/assets/team-logos/generic"
+    );
+  };
+
+  const pickTeamName = (team) => {
+    return (
+      g(team, "name") ||
+      g(team, "baseInfo.name") ||
+      g(team, "baseInfo.shortName") ||
+      g(team, "nameShortened") ||
+      "TBD"
+    );
+  };
+
+  const safeTournament = (node) => {
+    const t = g(node, "tournament") || {};
     return {
-      id: String(pick(it?.id, it?.seriesId, crypto.randomUUID())),
-      tournament: tournamentName(it),
-      formatShort: formatShort(it?.format),
-      timeISO: pick(it?.time, it?.startTimeScheduled),
-      timeLocal: fmtTimeLocal(pick(it?.time, it?.startTimeScheduled)),
-      live: !!liveFlag,
-      raw: it,
-      teamA, teamB
+      name: t.name || t.nameShortened || "—",
+      logo: t.logoUrl || "https://cdn.grid.gg/assets/tournament-logos/generic"
     };
-  }
+  };
 
-  function normalize(list, liveFlag=false) {
-    return (list || [])
-      .map(x => normalizeOne(x, liveFlag))
-      .filter(m => m.id && (m.teamA.name || m.teamB.name));
-  }
+  const setLastUpdated = (note) => {
+    if (!LAST) return;
+    const noteStr = note ? ` (${note})` : "";
+    LAST.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
+  };
 
-  // ---------- Rendering ----------
-  function cardHeaderHTML(m) {
-    const left = `
-      <span class="pill">${m.tournament}</span>
-    `;
-    const right = `
-      ${m.live ? `<span class="pill live-dot">LIVE</span>` : ""}
-      <span class="pill">${m.formatShort}</span>
-      <span class="pill">${m.timeLocal}</span>
-      ${m.teamA.lead > 0 ? `<span class="pill lead">${m.teamA.name} +${m.teamA.lead}</span>` : ""}
-      ${m.teamB.lead > 0 ? `<span class="pill lead">${m.teamB.name} +${m.teamB.lead}</span>` : ""}
-    `;
-    return `
-      <div class="card-top">
-        <div class="card-left">${left}</div>
-        <div class="card-right">${right}</div>
-      </div>
-    `;
-  }
-
-  function teamHTML(t) {
-    const logo = t.logo
-      ? `<img class="logo" alt="" loading="lazy" src="${t.logo}">`
-      : `<div class="logo" aria-hidden="true"></div>`;
-    return `
-      <div class="team">
-        ${logo}
-        <div class="name">${t.name || "TBD"}</div>
-      </div>
-    `;
-  }
-
-  function renderCard(m) {
-    const el = document.createElement("article");
-    el.className = "card" + (m.live ? " live" : "");
-    el.setAttribute("data-id", m.id);
-
-    el.innerHTML = `
-      ${cardHeaderHTML(m)}
-      <div class="teams">
-        ${teamHTML(m.teamA)}
-        <div class="vs">vs</div>
-        ${teamHTML(m.teamB)}
-      </div>
-    `;
-
-    // expand on click
-    el.addEventListener("click", () => openModal(m));
-    return el;
-  }
-
-  function renderList(root, items, emptyText) {
+  // ----- Skeletons -----
+  const renderSkeletons = (root, count=6) => {
     if (!root) return;
     const frag = document.createDocumentFragment();
+    for (let i=0;i<count;i++){
+      const c = document.createElement("div");
+      c.className = "card skeleton";
+      c.style.height = "128px";
+      frag.appendChild(c);
+    }
+    root.replaceChildren(frag);
+  };
 
-    if (!items || items.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = emptyText;
-      frag.appendChild(empty);
+  // Expose small module namespace to the next parts
+  window.__GRID_APP__ = {
+    DOM: { ROOT, LIST_LIVE, LIST_UP, LAST },
+    CFG: { API_BASE, TEAM_PIN, LIMIT_LIVE, LIMIT_UP, UPCOMING_HOURS },
+    STATE: { refreshMs, backoffMs },
+    UTIL: { g, clamp, fmtTime, relative, boShort, pickLogo, pickTeamName, safeTournament, setLastUpdated, renderSkeletons }
+  };
+
+
+// ----------------------
+// Part 2 — Data + Polling
+// ----------------------
+
+// Small fetch helper with no-store and simple JSON guard
+async function getJSON(url, signal) {
+  const res = await fetch(url, { cache: "no-store", signal });
+  if (!res.ok) {
+    // surface a concise error (e.g., 429 Enhance Your Calm)
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} on ${url}${text ? ` — ${text.slice(0,140)}` : ""}`);
+  }
+  return res.json();
+}
+
+// Map any format to { name, nameShortened }
+function normFormat(fmt) {
+  if (!fmt) return { name: "", nameShortened: "" };
+  if (typeof fmt === "string") {
+    const short = fmt.replace(/best-of-/i, "Bo");
+    return { name: fmt, nameShortened: short };
+  }
+  return {
+    name: fmt.name || "",
+    nameShortened: fmt.nameShortened || (fmt.name ? fmt.name.replace(/best-of-/i, "Bo") : "")
+  };
+}
+
+// Normalize a single series item from REST into the shape used by Part 3
+function normalizeItem(it, isLive) {
+  // tournament/name+logo: tolerate several shapes
+  const tour = it.tournament || it.event || {};
+  const tournament = {
+    name: tour.name || "",
+    logoUrl: tour.logoUrl || tour.logo || ""
+  };
+
+  // start time: support startTimeScheduled or time
+  const time = it.startTimeScheduled || it.time || "";
+
+  // format
+  const format = normFormat(it.format);
+
+  // teams array: support { teams:[ { baseInfo:{name,logoUrl} } ] } OR { teams:[{name,logoUrl}] }
+  const teamsRaw = Array.isArray(it.teams) ? it.teams : [];
+  const teams = teamsRaw.map((t) => {
+    const base = t.baseInfo || t;
+    const score = Number(
+      (t.score ?? t.seriesScore ?? t.scoreAdvantage ?? 0)
+    ) || 0;
+    return {
+      name: base?.name || "",
+      logo: base?.logoUrl || base?.logo || "",
+      score
+    };
+  });
+
+  return {
+    id: String(it.id ?? ""),
+    live: !!isLive,
+    tournament,
+    format,
+    time,
+    teams
+  };
+}
+
+// Sort helpers
+function byTimeAsc(a, b)  { return new Date(a.time) - new Date(b.time); }
+function pinTeamFirst(pin) {
+  const pinLC = (pin || "").toLowerCase();
+  return (a, b) => {
+    const aHit = a.teams.some(t => t.name.toLowerCase().includes(pinLC)) ? 1 : 0;
+    const bHit = b.teams.some(t => t.name.toLowerCase().includes(pinLC)) ? 1 : 0;
+    if (aHit !== bHit) return bHit - aHit;
+    return byTimeAsc(a, b);
+  };
+}
+
+// State + polling
+let inFlightCtrl = null;
+let timerId = null;
+
+// enforce a lower bound + jitter so tabs don’t synchronize
+refreshMs = Math.max(8000, Number(refreshMs || 0));
+function nextInterval() {
+  return Number(refreshMs) + Math.floor(Math.random() * 500);
+}
+
+async function load() {
+  // cancel an older in-flight fetch if any
+  if (inFlightCtrl) inFlightCtrl.abort();
+  const ctrl = new AbortController();
+  inFlightCtrl = ctrl;
+
+  try {
+    // REST endpoints exposed by your Render proxy
+    const liveUrl = `${API_BASE}/live`;
+    const upUrl   = `${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`;
+
+    const [liveRes, upRes] = await Promise.all([
+      getJSON(liveUrl, ctrl.signal),
+      getJSON(upUrl, ctrl.signal)
+    ]);
+
+    if (ctrl.signal.aborted) return;
+
+    const liveItems = (liveRes?.items || []).map(x => normalizeItem(x, true));
+    const upItems   = (upRes?.items || []).map(x => normalizeItem(x, false));
+
+    // sort (pin first if TEAM_PIN present)
+    if (TEAM_PIN) {
+      liveItems.sort(pinTeamFirst(TEAM_PIN));
+      upItems.sort(byTimeAsc);
     } else {
-      for (const m of items) frag.appendChild(renderCard(m));
+      liveItems.sort(byTimeAsc);
+      upItems.sort(byTimeAsc);
     }
 
-    root.classList.add("updating");
-    requestAnimationFrame(() => {
-      root.replaceChildren(frag);
-      root.classList.remove("updating");
-    });
+    // optional trimming by limits (if Part 1 defined these)
+    const liveView = LIMIT_LIVE > 0 ? liveItems.slice(0, LIMIT_LIVE) : liveItems;
+    const upView   = LIMIT_UP   > 0 ? upItems.slice(0, LIMIT_UP)   : upItems;
+
+    // render — renderList is defined in Part 3
+    renderList(LIST_LIVE, liveView,   "No live matches right now.");
+    renderList(LIST_UP,   upView,     "No upcoming matches in the selected window.");
+
+    setLastUpdated?.();
+  } catch (err) {
+    if (ctrl.signal.aborted) return; // a newer refresh started—ignore
+    console.error("[load] fetch failed:", err.message || err);
+    // keep prior DOM; you could surface a small toast if desired
   }
+}
 
-  // ---------- Modal ----------
-  const MODAL_BACKDROP = document.getElementById("modalBackdrop");
-  const MODAL_CLOSE = document.getElementById("modalClose");
-  const MODAL_CONTENT = document.getElementById("modalContent");
+function schedule() {
+  if (timerId) clearTimeout(timerId);
+  load();
+  timerId = setTimeout(schedule, nextInterval());
+}
 
-  function openModal(m) {
-    const when = fmtDateLocal(m.timeISO);
-    const badges = `
-      ${m.live ? `<span class="pill live-dot">LIVE</span>` : ""}
-      <span class="pill">${m.formatShort}</span>
-      <span class="pill">${when}</span>
-      ${m.teamA.lead > 0 ? `<span class="pill lead">${m.teamA.name} +${m.teamA.lead}</span>` : ""}
-      ${m.teamB.lead > 0 ? `<span class="pill lead">${m.teamB.name} +${m.teamB.lead}</span>` : ""}
-    `;
-
-    MODAL_CONTENT.innerHTML = `
-      <div class="modal-header">
-        <h3 id="modalTitle">${m.tournament}</h3>
-        <div class="modal-badges">${badges}</div>
-      </div>
-
-      <div class="modal-teams">
-        <div class="modal-team">
-          ${m.teamA.logo ? `<img class="logo" alt="" src="${m.teamA.logo}">` : `<div class="logo"></div>`}
-          <div class="name">${m.teamA.name}</div>
-        </div>
-        <div class="modal-vs">vs</div>
-        <div class="modal-team" style="justify-content:flex-end;">
-          <div class="name" style="text-align:right;">${m.teamB.name}</div>
-          ${m.teamB.logo ? `<img class="logo" alt="" src="${m.teamB.logo}">` : `<div class="logo"></div>`}
-        </div>
-      </div>
-
-      <div class="modal-meta">
-        <div><strong>Status:</strong> ${m.live ? "Live" : "Upcoming"}</div>
-        <div><strong>Local time:</strong> ${when}</div>
-        <div><strong>Format:</strong> ${m.formatShort}</div>
-      </div>
-    `;
-
-    MODAL_BACKDROP.hidden = false;
-    document.body.style.overflow = "hidden";
-  }
-
-  function closeModal() {
-    MODAL_BACKDROP.hidden = true;
-    document.body.style.overflow = "";
-  }
-  MODAL_CLOSE.addEventListener("click", closeModal);
-  MODAL_BACKDROP.addEventListener("click", (e) => {
-    if (e.target === MODAL_BACKDROP) closeModal();
+// Allow user-driven refresh change via <select>
+if (REFRESH_SELECT) {
+  REFRESH_SELECT.addEventListener("change", () => {
+    refreshMs = Math.max(8000, Number(REFRESH_SELECT.value || refreshMs));
+    schedule();
   });
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !MODAL_BACKDROP.hidden) closeModal();
+}
+
+// kick things off
+schedule();
+
+// ----------------------
+// Part 3 — Render UI + Details Modal
+// ----------------------
+
+// ---------- small formatters ----------
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  // "Wed, 14:05" in user’s locale
+  return d.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+function fmtRel(iso) {
+  if (!iso) return "";
+  const d = new Date(iso).getTime();
+  const now = Date.now();
+  const ms = d - now;
+  const abs = Math.abs(ms);
+  const mins = Math.round(abs / 60000);
+  if (mins < 1) return "now";
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  const sign = ms >= 0 ? "in " : "";
+  const tail = ms < 0 ? " ago" : "";
+  if (hrs >= 1) return `${sign}${hrs}h ${rem}m${tail}`;
+  return `${sign}${mins}m${tail}`;
+}
+function fmtBO(format) {
+  const s = format?.nameShortened || "";
+  if (/^bo\d+/i.test(s)) return s.toUpperCase();
+  return s || (format?.name ? format.name.replace(/best-of-/i, "Bo") : "");
+}
+function safe(str) {
+  return String(str || "");
+}
+function hasScore(teams) {
+  return Array.isArray(teams) && teams.some(t => (t?.score || 0) > 0);
+}
+
+// ---------- list renderer ----------
+function renderList(root, items, emptyText) {
+  if (!root) return;
+  const frag = document.createDocumentFragment();
+
+  if (!items || items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = emptyText;
+    frag.appendChild(empty);
+  } else {
+    for (const m of items) frag.appendChild(renderCard(m));
+  }
+
+  root.classList.add("updating");
+  requestAnimationFrame(() => {
+    root.replaceChildren(frag);
+    root.classList.remove("updating");
   });
+}
 
-  // ---------- Data load & refresh (with jitter, abort protection) ----------
-  let inFlightCtrl;
-  async function load() {
-    if (inFlightCtrl) inFlightCtrl.abort();
-    const ctrl = new AbortController();
-    inFlightCtrl = ctrl;
+// ---------- card builder ----------
+function renderCard(m) {
+  const tournamentName = safe(m.tournament?.name);
+  const tournamentLogo = safe(m.tournament?.logoUrl);
+  const isLive = !!m.live;
+  const bo = fmtBO(m.format);
+  const timeLabel = fmtTime(m.time);
+  const rel = fmtRel(m.time);
+  const showInlineScore = hasScore(m.teams);
 
-    try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
-      ]);
-      if (ctrl.signal.aborted) return;
+  const a = document.createElement("article");
+  a.className = `card${isLive ? " live" : ""}`;
+  a.tabIndex = 0; // for keyboard focus
+  a.setAttribute("role", "button");
+  a.setAttribute("aria-label", `Open details for ${tournamentName} ${teamLine(m.teams)}`);
 
-      let live = normalize(liveRes.items || [], true).map(x => ({...x, _live: true}));
-      let upcoming = normalize(upRes.items || [], false);
+  // header
+  const header = document.createElement("div");
+  header.className = "card-top";
 
-      // optional pin sort
-      if (TEAM_PIN) {
-        const pin = TEAM_PIN;
-        const score = (a, b) => {
-          const ap = (a.teamA.name + " " + a.teamB.name).toLowerCase().includes(pin) ? 1 : 0;
-          const bp = (b.teamA.name + " " + b.teamB.name).toLowerCase().includes(pin) ? 1 : 0;
-          if (ap !== bp) return bp - ap;
-          return (asDate(a.timeISO) ?? 0) - (asDate(b.timeISO) ?? 0);
-        };
-        live.sort(score);
-        upcoming.sort((a, b) => (asDate(a.timeISO) ?? 0) - (asDate(b.timeISO) ?? 0));
-      } else {
-        live.sort((a, b) => (asDate(a.timeISO) ?? 0) - (asDate(b.timeISO) ?? 0));
-        upcoming.sort((a, b) => (asDate(a.timeISO) ?? 0) - (asDate(b.timeISO) ?? 0));
-      }
+  const left = document.createElement("div");
+  left.className = "left";
+  if (tournamentLogo) {
+    const logo = document.createElement("img");
+    logo.className = "event-logo";
+    logo.src = tournamentLogo;
+    logo.alt = `${tournamentName} logo`;
+    logo.loading = "lazy";
+    left.appendChild(logo);
+  }
+  const ev = document.createElement("span");
+  ev.className = "pill";
+  ev.textContent = tournamentName || "—";
+  left.appendChild(ev);
 
-      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UP > 0) upcoming = upcoming.slice(0, LIMIT_UP);
+  const right = document.createElement("div");
+  right.className = "right";
 
-      renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UP, upcoming, "No upcoming matches in the selected window.");
-      setLastUpdated();
-    } catch (e) {
-      if (ctrl.signal.aborted) return;
-      console.error(e);
-      setLastUpdated("error");
-      // keep current DOM; could toast if you want
+  if (bo) {
+    const boEl = document.createElement("span");
+    boEl.className = "pill";
+    boEl.textContent = bo.toUpperCase();
+    right.appendChild(boEl);
+  }
+  if (isLive) {
+    const liveEl = document.createElement("span");
+    liveEl.className = "pill live-dot";
+    liveEl.textContent = "LIVE";
+    right.appendChild(liveEl);
+  }
+  if (timeLabel) {
+    const timeEl = document.createElement("span");
+    timeEl.className = "pill";
+    timeEl.textContent = `${timeLabel} · ${rel}`;
+    right.appendChild(timeEl);
+  }
+
+  header.appendChild(left);
+  header.appendChild(right);
+
+  // body — teams
+  const body = document.createElement("div");
+  body.className = "card-body";
+
+  const teamsWrap = document.createElement("div");
+  teamsWrap.className = "teams";
+
+  const [t1, t2] = normalizeTeamsPair(m.teams);
+
+  teamsWrap.appendChild(teamCell(t1, showInlineScore));
+  teamsWrap.appendChild(vsCell());
+  teamsWrap.appendChild(teamCell(t2, showInlineScore));
+
+  body.appendChild(teamsWrap);
+
+  a.appendChild(header);
+  a.appendChild(body);
+
+  // open modal on click/enter/space
+  a.addEventListener("click", () => openDetailsModal(m, a));
+  a.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openDetailsModal(m, a);
     }
+  });
+
+  return a;
+}
+
+function teamLine(teams) {
+  const [a, b] = normalizeTeamsPair(teams);
+  return `${a.name || "TBD"} vs ${b.name || "TBD"}`;
+}
+
+function normalizeTeamsPair(teams) {
+  const t1 = teams?.[0] || {};
+  const t2 = teams?.[1] || {};
+  return [
+    { name: safe(t1.name), logo: safe(t1.logo), score: Number(t1.score || 0) },
+    { name: safe(t2.name), logo: safe(t2.logo), score: Number(t2.score || 0) }
+  ];
+}
+
+function teamCell(t, showScore) {
+  const cell = document.createElement("div");
+  cell.className = "team";
+
+  const row = document.createElement("div");
+  row.className = "row";
+
+  const left = document.createElement("div");
+  left.style.display = "flex";
+  left.style.alignItems = "center";
+  left.style.gap = "8px";
+
+  if (t.logo) {
+    const img = document.createElement("img");
+    img.className = "team-logo";
+    img.src = t.logo;
+    img.alt = `${t.name} logo`;
+    img.loading = "lazy";
+    left.appendChild(img);
   }
 
-  // enforce a floor & add 0–500ms jitter so tabs don’t synchronize
-  function nextInterval() {
-    const base = Math.max(8000, refreshMs);
-    return base + Math.floor(Math.random() * 500);
+  const name = document.createElement("div");
+  name.className = "team-name";
+  name.textContent = t.name || "TBD";
+  left.appendChild(name);
+
+  const right = document.createElement("div");
+  right.className = "score";
+  right.textContent = showScore ? String(t.score) : ""; // hide if 0
+
+  row.appendChild(left);
+  row.appendChild(right);
+  cell.appendChild(row);
+
+  return cell;
+}
+
+function vsCell() {
+  const el = document.createElement("div");
+  el.className = "vs";
+  el.textContent = "vs";
+  return el;
+}
+
+// ---------- modal (expandable details) ----------
+let activeModal = null;
+let restoreFocusEl = null;
+
+function openDetailsModal(m, openerEl) {
+  closeModal(); // just in case
+
+  restoreFocusEl = openerEl || null;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal();
+  });
+
+  const dialog = document.createElement("div");
+  dialog.className = "modal";
+  dialog.setAttribute("role", "document");
+
+  // header row (tournament + status)
+  const head = document.createElement("div");
+  head.className = "modal-head";
+
+  const left = document.createElement("div");
+  left.className = "left";
+  if (m.tournament?.logoUrl) {
+    const logo = document.createElement("img");
+    logo.className = "event-logo";
+    logo.src = m.tournament.logoUrl;
+    logo.alt = `${m.tournament.name} logo`;
+    left.appendChild(logo);
   }
-  let timer;
-  function schedule() {
-    if (timer) clearTimeout(timer);
-    load();
-    timer = setTimeout(schedule, nextInterval());
+  const title = document.createElement("div");
+  title.className = "event-title";
+  title.textContent = m.tournament?.name || "—";
+  left.appendChild(title);
+
+  const right = document.createElement("div");
+  right.className = "right";
+  if (fmtBO(m.format)) {
+    const boEl = document.createElement("span");
+    boEl.className = "pill";
+    boEl.textContent = fmtBO(m.format).toUpperCase();
+    right.appendChild(boEl);
   }
-  schedule();
-})();
+  if (m.live) {
+    const liveEl = document.createElement("span");
+    liveEl.className = "pill live-dot";
+    liveEl.textContent = "LIVE";
+    right.appendChild(liveEl);
+  }
+  if (m.time) {
+    const when = document.createElement("span");
+    when.className = "pill";
+    when.textContent = `${fmtTime(m.time)} · ${fmtRel(m.time)}`;
+    right.appendChild(when);
+  }
+
+  head.appendChild(left);
+  head.appendChild(right);
+
+  // teams block (bigger)
+  const teams = document.createElement("div");
+  teams.className = "modal-teams";
+
+  const [t1, t2] = normalizeTeamsPair(m.teams);
+  const showScore = hasScore(m.teams);
+
+  const t1El = bigTeamBlock(t1, showScore);
+  const sep = document.createElement("div");
+  sep.className = "modal-vs";
+  sep.textContent = "vs";
+  const t2El = bigTeamBlock(t2, showScore);
+
+  teams.appendChild(t1El);
+  teams.appendChild(sep);
+  teams.appendChild(t2El);
+
+  // meta/info
+  const meta = document.createElement("div");
+  meta.className = "modal-meta";
+
+  const grid = document.createElement("div");
+  grid.className = "meta-grid";
+
+  grid.appendChild(metaRow("Status", m.live ? "Live" : "Upcoming"));
+  grid.appendChild(metaRow("Scheduled", m.time ? new Date(m.time).toLocaleString() : "—"));
+  grid.appendChild(metaRow("Format", fmtBO(m.format) || "—"));
+  grid.appendChild(metaRow("Series ID", m.id || "—"));
+
+  meta.appendChild(grid);
+
+  // close button
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "close-btn";
+  closeBtn.type = "button";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.innerHTML = "✕";
+  closeBtn.addEventListener("click", closeModal);
+
+  dialog.appendChild(closeBtn);
+  dialog.appendChild(head);
+  dialog.appendChild(teams);
+  dialog.appendChild(meta);
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  // focus + esc
+  activeModal = overlay;
+  closeBtn.focus();
+  document.addEventListener("keydown", onEscToClose);
+}
+
+function bigTeamBlock(t, showScore) {
+  const wrap = document.createElement("div");
+  wrap.className = "team big";
+
+  const img = document.createElement("img");
+  img.className = "team-logo";
+  img.src = t.logo || "";
+  img.alt = `${t.name || "TBD"} logo`;
+  img.loading = "lazy";
+
+  const name = document.createElement("div");
+  name.className = "team-name";
+  name.textContent = t.name || "TBD";
+
+  const score = document.createElement("div");
+  score.className = "score big";
+  score.textContent = showScore ? String(t.score) : ""; // hide if 0
+
+  wrap.appendChild(img);
+  wrap.appendChild(name);
+  wrap.appendChild(score);
+  return wrap;
+}
+
+function metaRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "meta-row";
+  const l = document.createElement("div");
+  l.className = "meta-label";
+  l.textContent = label;
+  const v = document.createElement("div");
+  v.className = "meta-value";
+  v.textContent = value;
+  row.appendChild(l);
+  row.appendChild(v);
+  return row;
+}
+
+function onEscToClose(e) {
+  if (e.key === "Escape") {
+    closeModal();
+  }
+}
+
+function closeModal() {
+  if (!activeModal) return;
+  document.removeEventListener("keydown", onEscToClose);
+  activeModal.remove();
+  activeModal = null;
+  if (restoreFocusEl) {
+    restoreFocusEl.focus();
+    restoreFocusEl = null;
+  }
+}

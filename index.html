@@ -2,45 +2,191 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Matches • Live & Upcoming</title>
+  <title>Esports Matches – Live & Upcoming</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=20" />
 </head>
 <body>
-  <header>
-    <h1>Matches</h1>
+  <!-- ================= HEADER ================= -->
+  <header class="site-header">
+    <div class="logo-area">
+      <img src="https://cdn.grid.gg/assets/tournament-logos/generic" alt="Site Logo" class="site-logo">
+      <h1>Esports Matches</h1>
+    </div>
+    <nav class="main-nav">
+      <a href="#live">Live</a>
+      <a href="#upcoming">Upcoming</a>
+      <a href="#stats">Stats</a>
+    </nav>
+  </header>
+
+  <!-- ================= MAIN ================= -->
+  <main id="matchesRoot" 
+        data-api="https://grid-proxy.onrender.com/api/series" 
+        data-refresh="30000">
+
+    <!-- ===== Toolbar ===== -->
     <div class="toolbar">
-      <label>Refresh
+      <label>Refresh:
         <select id="refreshSelect">
-          <option value="15000" selected>15s</option>
-          <option value="30000">30s</option>
+          <option value="15000">15s</option>
+          <option value="30000" selected>30s</option>
+          <option value="60000">1m</option>
         </select>
       </label>
       <span id="teamBadge" hidden></span>
       <span id="lastUpdated"></span>
     </div>
-  </header>
 
-  <main id="matchesRoot" data-api="https://grid-proxy.onrender.com/api/series" data-refresh="15000">
-    <section>
-      <h2>Live</h2>
+    <!-- ===== Sections ===== -->
+    <section id="live">
+      <h2>Live Matches</h2>
       <div id="listLive" class="cards"></div>
     </section>
 
-    <section>
+    <section id="upcoming">
       <h2>Upcoming <small>(next <span id="upHoursSpan">24</span>h)</small></h2>
       <div id="listUpcoming" class="cards"></div>
     </section>
+
+    <section id="stats">
+      <h2>Statistics</h2>
+      <div id="statsContainer" class="stats-grid"></div>
+    </section>
   </main>
 
-  <!-- Modal for expanded card -->
-  <div id="modalBackdrop" class="modal-backdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
-      <div id="modalContent" class="modal-content"></div>
-    </div>
-  </div>
+    <!-- ===== Templates & UI Shell ===== -->
 
-  <script src="app.js?v=20"></script>
+    <!-- Card Template (used by JS via cloning) -->
+    <template id="match-card-tpl">
+      <a class="card" role="button" aria-haspopup="dialog">
+        <div class="card-left">
+          <div class="tournament">
+            <img class="tournament-logo" alt="" />
+            <span class="tournament-name"></span>
+          </div>
+          <div class="teams">
+            <div class="team team-a">
+              <img class="team-logo" alt="" />
+              <span class="team-name"></span>
+            </div>
+            <span class="vs">vs</span>
+            <div class="team team-b">
+              <img class="team-logo" alt="" />
+              <span class="team-name"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-right">
+          <div class="meta-top">
+            <span class="pill pill-live" hidden>LIVE</span>
+            <span class="pill pill-format">Bo?</span>
+            <time class="pill pill-time" datetime=""></time>
+          </div>
+          <div class="inline-score" hidden>
+            <span class="score-a">0</span>
+            <span class="score-sep">–</span>
+            <span class="score-b">0</span>
+          </div>
+        </div>
+      </a>
+    </template>
+
+    <!-- Empty State Template -->
+    <template id="empty-state-tpl">
+      <div class="empty">
+        <p class="empty-title"></p>
+        <p class="empty-sub">Try again later or adjust your filters.</p>
+      </div>
+    </template>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  </main>
+
+  <!-- ================= MATCH DETAIL MODAL ================= -->
+  <dialog id="matchModal" class="modal" aria-labelledby="modalTitle">
+    <form method="dialog" class="modal-scrim" id="modalScrim"></form>
+
+    <div class="modal-card">
+      <header class="modal-header">
+        <div class="modal-title-wrap">
+          <img class="modal-tournament-logo" alt="" />
+          <h3 id="modalTitle" class="modal-title">Match Details</h3>
+        </div>
+        <menu class="modal-actions">
+          <button class="btn ghost" id="openStreamBtn" type="button">Watch Stream</button>
+          <button class="btn" id="closeModalBtn" value="close">Close</button>
+        </menu>
+      </header>
+
+      <section class="modal-body">
+        <div class="modal-meta">
+          <span class="pill pill-live" id="modalLive" hidden>LIVE</span>
+          <span class="pill" id="modalFormat">Bo?</span>
+          <time class="pill" id="modalTime" datetime=""></time>
+        </div>
+
+        <div class="modal-teams">
+          <div class="modal-team">
+            <img class="modal-team-logo" id="modalLogoA" alt="" />
+            <div class="modal-team-name" id="modalNameA">Team A</div>
+            <div class="modal-score" id="modalScoreA">0</div>
+          </div>
+          <div class="modal-vs">vs</div>
+          <div class="modal-team">
+            <img class="modal-team-logo" id="modalLogoB" alt="" />
+            <div class="modal-team-name" id="modalNameB">Team B</div>
+            <div class="modal-score" id="modalScoreB">0</div>
+          </div>
+        </div>
+
+        <div class="modal-grid">
+          <article class="modal-panel">
+            <h4>About</h4>
+            <dl class="kv">
+              <div>
+                <dt>Title</dt>
+                <dd id="modalTitleName">—</dd>
+              </div>
+              <div>
+                <dt>Tournament</dt>
+                <dd id="modalTournamentName">—</dd>
+              </div>
+              <div>
+                <dt>Starts</dt>
+                <dd id="modalStartsLocal">—</dd>
+              </div>
+              <div>
+                <dt>Series ID</dt>
+                <dd id="modalSeriesId">—</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="modal-panel">
+            <h4>Notes</h4>
+            <ul class="bullets" id="modalNotes">
+              <li>Leading data only shown when non-zero.</li>
+              <li>Logos & tournament visuals included when available.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="site-footer">
+    <small>Powered by GRID data • Built by you 🚀</small>
+  </footer>
+
+  <!-- ================= SCRIPTS ================= -->
+  <script src="app.js?v=20" defer></script>
 </body>
 </html>
