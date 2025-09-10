@@ -2,27 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Live + Upcoming</title>
+  <title>Matches • Live & Upcoming</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css?v=20" />
 </head>
 <body>
-  <header><h1>Matches (v8)</h1></header>
-
-  <main id="matchesRoot"
-        data-api="https://grid-proxy.onrender.com/api/series"
-        data-refresh="30000">
+  <header>
+    <h1>Matches</h1>
     <div class="toolbar">
-      <label>Refresh:
+      <label>Refresh
         <select id="refreshSelect">
-          <option value="15000">15s</option>
+          <option value="15000" selected>15s</option>
           <option value="30000">30s</option>
         </select>
       </label>
       <span id="teamBadge" hidden></span>
       <span id="lastUpdated"></span>
     </div>
+  </header>
 
+  <main id="matchesRoot" data-api="https://grid-proxy.onrender.com/api/series" data-refresh="15000">
     <section>
       <h2>Live</h2>
       <div id="listLive" class="cards"></div>
@@ -34,6 +33,14 @@
     </section>
   </main>
 
-  <script defer src="app.js?v=20"></script>
+  <!-- Modal for expanded card -->
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+      <div id="modalContent" class="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js?v=20"></script>
 </body>
 </html>
