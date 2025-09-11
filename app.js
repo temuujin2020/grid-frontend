@@ -1,412 +1,328 @@
-/* =========================
-   Lightweight Esports Viewer
-   - Loads LIVE & UPCOMING series
-   - Click a match to open drawer w/ details, rosters, and live state
-   ========================= */
+/* =========================================================================
+   Simple Live & Upcoming page (token-less frontend, uses your Render proxy)
+   ========================================================================= */
 
-const $ = (q, el = document) => el.querySelector(q);
-const $$ = (q, el = document) => [...el.querySelectorAll(q)];
-const byId = (id) => document.getElementById(id);
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-const UI = {
-  liveList: byId("liveList"),
-  upcomingList: byId("upcomingList"),
-  lastUpdated: byId("lastUpdated"),
-  drawer: byId("drawer"),
-  drawerBody: byId("drawerBody"),
-  closeDrawer: byId("closeDrawer"),
-  scrim: byId("scrim"),
-  tabs: $$(".tab"),
-  prev: byId("prevPage"),
-  next: byId("nextPage"),
-  windowSel: byId("window"),
-  jsonPaste: byId("jsonPaste"),
-  renderJsonBtn: byId("renderJson"),
-  saveConn: byId("saveConn"),
-  gqlEndpoint: byId("gqlEndpoint"),
-  gqlApiKey: byId("gqlApiKey"),
-  loadLive: byId("loadLive"),
-  loadUpcoming: byId("loadUpcoming"),
-};
+// ---- Config (no secrets) -------------------------------------------------
+const DEFAULT_PROXY = "https://grid-proxy.onrender.com"; // your Render app
+let PROXY_BASE = localStorage.getItem("proxyBase") || DEFAULT_PROXY;
 
-const STORE = {
-  endpoint: localStorage.getItem("gql:endpoint") || "",
-  apiKey: localStorage.getItem("gql:token") || "",
-  cursors: { startCursor: null, endCursor: null, hasNext: false, hasPrev: false },
-  currentTab: "live",
-  currentWindowHours: 24,
-  lastPayloadType: null, // "live" | "upcoming" | "json"
-};
-
-// init form fields
-UI.gqlEndpoint.value = STORE.endpoint;
-UI.gqlApiKey.value = STORE.apiKey;
-
-/* -------------------------
-   Helpers
-------------------------- */
-const UTIL = {
-  iso(dt) { return new Date(dt).toISOString(); },
-  fmtTime(iso) {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return d.toUTCString().replace(" GMT", "");
-  },
-  rel(iso) {
-    const d = new Date(iso).getTime();
-    const now = Date.now();
-    const diff = Math.round((d - now) / 60000);
-    if (diff === 0) return "now";
-    if (diff > 0) return `in ${diff}m`;
-    return `${Math.abs(diff)}m ago`;
-  },
-  boShort(fmt) {
-    if (!fmt) return "";
-    if (typeof fmt === "string") return fmt.replace("best-of-", "Bo");
-    if (fmt?.nameShortened) return fmt.nameShortened;
-    return "";
-  },
-  safeTournament(t) {
-    return t?.nameShortened || t?.name || "—";
-  },
-  teamName(t) {
-    return t?.baseInfo?.name || t?.name || "—";
-  },
-  setUpdated() {
-    UI.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
-  },
-  badgeLive() { const s = document.createElement("span"); s.className="badge live"; s.textContent="LIVE"; return s; },
-  badgeBo(fmt) { const s = document.createElement("span"); s.className="badge bo"; s.textContent=UTIL.boShort(fmt); return s; },
-};
-
-function cardMatch(m, { live } = { live:false }) {
-  const el = document.createElement("article");
-  el.className = "card match";
-  el.setAttribute("role","button");
-  el.tabIndex = 0;
-
-  const left = document.createElement("div");
-  left.innerHTML = `<div class="time">${live ? "Live" : "Start (UTC)"}</div><div>${UTIL.fmtTime(m.startTimeScheduled)}</div><div class="time">${UTIL.rel(m.startTimeScheduled)}</div>`;
-
-  const right = document.createElement("div");
-  const header = document.createElement("div");
-  header.style.display="flex"; header.style.gap="8px"; header.style.alignItems="center";
-  if (live) header.appendChild(UTIL.badgeLive());
-  header.appendChild(UTIL.badgeBo(m.format));
-  const tour = document.createElement("div");
-  tour.className="tournament";
-  tour.textContent = UTIL.safeTournament(m.tournament);
-  header.appendChild(tour);
-
-  const teams = document.createElement("div");
-  teams.className="teams";
-  (m.teams||[]).slice(0,2).forEach((t,i)=>{
-    const row = document.createElement("div");
-    row.className="team";
-    const dot = document.createElement("span"); dot.className="dot"; dot.style.background=i? "#7aa2ff":"#82d173";
-    const name = document.createElement("span"); name.className="name"; name.textContent = UTIL.teamName(t);
-    const adv = document.createElement("span"); adv.className="adv"; adv.textContent = (t.scoreAdvantage?`Adv ${t.scoreAdvantage}`:"");
-    row.append(dot,name,adv); teams.appendChild(row);
+// Save/load proxy (just the base URL, never a token)
+const proxyInput = $("#proxyInput");
+const saveProxyBtn = $("#saveProxyBtn");
+if (proxyInput) proxyInput.value = PROXY_BASE;
+if (saveProxyBtn) {
+  saveProxyBtn.addEventListener("click", () => {
+    const v = (proxyInput.value || "").trim().replace(/\/+$/, "");
+    if (!v) return;
+    PROXY_BASE = v;
+    localStorage.setItem("proxyBase", PROXY_BASE);
+    toast("Proxy URL saved");
+    refreshAll();
   });
+}
 
-  right.append(header,teams);
-  el.append(left,right);
+// ---- Small helpers -------------------------------------------------------
+const fmtTime = (iso) => {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toUTCString().replace(":00 GMT", " UTC");
+  } catch { return iso; }
+};
+const relFromNow = (iso) => {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = Math.round((t - now) / 1000);
+  const abs = Math.abs(diff);
+  const unit = abs >= 3600 ? "h" : abs >= 60 ? "m" : "s";
+  const val = unit === "h" ? Math.round(abs / 3600)
+            : unit === "m" ? Math.round(abs / 60)
+            : abs;
+  return diff >= 0 ? `in ${val}${unit}` : `${val}${unit} ago`;
+};
+const boShort = (format) => {
+  if (!format) return "";
+  if (typeof format === "string") return format.replace("best-of-", "Bo");
+  if (format.nameShortened) return format.nameShortened;
+  if (format.name) return format.name.replace("best-of-", "Bo");
+  return "";
+};
+const teamName = (t) => t?.baseInfo?.name || t?.name || "—";
+const logo = (t) => t?.baseInfo?.logoUrl || t?.logoUrl || "https://cdn.grid.gg/assets/team-logos/generic";
 
-  el.addEventListener("click", () => openDrawerForSeries(m));
-  el.addEventListener("keydown", (e)=>{ if(e.key==="Enter") openDrawerForSeries(m); });
+// Normalize various shapes → simple match object the UI understands
+function normalizeSeriesNode(node, live=false){
+  if (!node) return null;
+  return {
+    id: node.id,
+    live,
+    title: node.title?.nameShortened || "",
+    tournament: node.tournament?.nameShortened || node.tournament?.name || "",
+    time: node.startTimeScheduled,
+    format: node.format,
+    teams: (node.teams || []).map(x => ({
+      name: teamName(x),
+      logo: logo(x),
+      advantage: x.scoreAdvantage ?? 0
+    })),
+  };
+}
+function normalizeList(payload, live=false){
+  // Accept: {data:{allSeries:{edges:[{node}]}}} OR {matches:[...]} OR [...]
+  if (Array.isArray(payload)) return payload.map(n => normalizeSeriesNode(n, live)).filter(Boolean);
+  if (payload?.matches) return payload.matches.map(n => normalizeSeriesNode(n, live)).filter(Boolean);
+  const edges = payload?.data?.allSeries?.edges || [];
+  return edges.map(e => normalizeSeriesNode(e.node, live)).filter(Boolean);
+}
+
+// ---- Fetchers (against your proxy) --------------------------------------
+async function api(path){
+  const url = `${PROXY_BASE}${path}`;
+  const r = await fetch(url, { headers: { "Content-Type":"application/json" }});
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Expect the proxy to expose these read-only routes
+// - GET /api/series/live?hours=6
+// - GET /api/series/upcoming?hours=24
+// - GET /api/series/:id/details
+async function fetchLive(hours=6){
+  try {
+    const raw = await api(`/api/series/live?hours=${encodeURIComponent(hours)}`);
+    return normalizeList(raw, true);
+  } catch (e){
+    console.error("fetchLive error", e);
+    return [];
+  }
+}
+async function fetchUpcoming(hours=24){
+  try {
+    const raw = await api(`/api/series/upcoming?hours=${encodeURIComponent(hours)}`);
+    return normalizeList(raw, false);
+  } catch (e){
+    console.error("fetchUpcoming error", e);
+    return [];
+  }
+}
+async function fetchDetails(id){
+  try {
+    const raw = await api(`/api/series/${encodeURIComponent(id)}/details`);
+    // Let’s keep the shape flexible; render function will probe fields.
+    return raw?.data || raw;
+  } catch (e){
+    console.error("fetchDetails error", e);
+    return null;
+  }
+}
+
+// ---- Rendering -----------------------------------------------------------
+const liveGrid = $("#liveGrid");
+const upcomingGrid = $("#upcomingGrid");
+const liveLast = $("#liveLastUpdated");
+const upcomingLast = $("#upcomingLastUpdated");
+
+function emptyCard(msg){
+  const d = document.createElement("div");
+  d.className = "empty";
+  d.textContent = msg;
+  return d;
+}
+
+function matchCard(m){
+  const el = document.createElement("article");
+  el.className = `card ${m.live ? "card--live" : ""}`;
+  el.setAttribute("data-id", m.id);
+
+  const title = m.title || (m.live ? "Live" : "Match");
+  const bo = boShort(m.format);
+  const time = m.live ? "Live now" : `${fmtTime(m.time)} · ${relFromNow(m.time)}`;
+
+  el.innerHTML = `
+    <div class="card__head">
+      <div class="card__title">
+        <span class="badge ${m.live ? "badge--live":""}">${m.live ? "LIVE" : "UPCOMING"}</span>
+        <strong>${title}</strong>
+      </div>
+      <div class="bo">${bo || ""}</div>
+    </div>
+    <div class="card__time">${time}</div>
+    <div class="card__teams">
+      ${m.teams.slice(0,2).map(t => `
+        <div class="team-row">
+          <img class="team-logo" alt="" src="${logo(t)}" />
+          <div class="team-name">${teamName(t)}</div>
+        </div>
+      `).join("")}
+    </div>
+    <div class="card__cta">
+      <a class="link" role="button">View details →</a>
+    </div>
+  `;
+
+  el.addEventListener("click", () => openDrawerForMatch(m));
   return el;
 }
 
-function renderSeriesList(target, list, {live}={live:false}) {
+function renderGrid(target, list, emptyText){
   target.innerHTML = "";
-  if (!list?.length) {
-    const blank = document.createElement("div");
-    blank.className="card none";
-    blank.textContent = "No matches found.";
-    target.appendChild(blank);
+  if (!list.length){
+    target.appendChild(emptyCard(emptyText));
     return;
   }
-  list.forEach(s => target.appendChild(cardMatch(s, {live})));
+  const frag = document.createDocumentFragment();
+  list.forEach(m => frag.appendChild(matchCard(m)));
+  target.appendChild(frag);
 }
 
-/* -------------------------
-   Drawer (details)
-------------------------- */
-function openDrawer() {
-  UI.drawer.setAttribute("aria-hidden","false");
+function setStamp(el){
+  if (!el) return;
+  el.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 }
-function closeDrawer() {
-  UI.drawer.setAttribute("aria-hidden","true");
-  UI.drawerBody.innerHTML="";
-}
-UI.closeDrawer.addEventListener("click", closeDrawer);
-UI.scrim.addEventListener("click", closeDrawer);
 
-async function openDrawerForSeries(seriesNode) {
+// ---- Drawer (details) ----------------------------------------------------
+const drawer = $("#drawer");
+const drawerBody = $("#drawerBody");
+const drawerClose = $("#drawerClose");
+const drawerBackdrop = $("#drawerBackdrop");
+drawerClose.addEventListener("click", closeDrawer);
+drawerBackdrop.addEventListener("click", closeDrawer);
+
+function openDrawer(){
+  drawer.setAttribute("data-open","true");
+  drawer.setAttribute("aria-hidden","false");
+}
+function closeDrawer(){
+  drawer.removeAttribute("data-open");
+  drawer.setAttribute("aria-hidden","true");
+  drawerBody.innerHTML = "";
+}
+
+async function openDrawerForMatch(m){
   openDrawer();
-  UI.drawerBody.innerHTML = `
-    <h2 style="margin:6px 0;">${UTIL.safeTournament(seriesNode.tournament)}</h2>
-    <div class="meta"><div>Series ID</div><div>${seriesNode.id}</div></div>
-    <div class="meta"><div>Start (UTC)</div><div>${UTIL.fmtTime(seriesNode.startTimeScheduled)} · ${UTIL.rel(seriesNode.startTimeScheduled)}</div></div>
-    <div class="meta"><div>Format</div><div>${UTIL.boShort(seriesNode.format) || "—"}</div></div>
-    <div class="divider"></div>
-    <div id="liveStateBlock"><div class="meta"><div>Live</div><div>Loading…</div></div></div>
-    <div class="divider"></div>
-    <h3>Teams</h3>
-    <div id="teamBlocks"></div>
+  drawerBody.innerHTML = `<div class="empty">Loading…</div>`;
+  const details = await fetchDetails(m.id);
+
+  // Try to find a canonical series object in details
+  const series = details?.series || details?.data?.series || m;
+  const state  = details?.seriesState || details?.data?.seriesState;
+  const teams  = series?.teams || m.teams || [];
+  const fmt    = boShort(series?.format || m.format);
+
+  const meta = (label, value) => `
+    <dt>${label}</dt><dd>${value || "—"}</dd>
   `;
 
-  // 1) Live state (best-effort)
-  try {
-    const state = await GQL.fetchSeriesState(seriesNode.id);
-    const liveEl = $("#liveStateBlock", UI.drawerBody);
-    if (state?.valid) {
-      const label = state.started && !state.finished ? "In progress" : (state.finished ? "Finished" : "Not started");
-      liveEl.innerHTML = `
-        <div class="meta"><div>Status</div><div>${label}</div></div>
-        <div class="meta"><div>Updated</div><div>${UTIL.fmtTime(state.updatedAt)}</div></div>
-      `;
-    } else {
-      liveEl.innerHTML = `<div class="meta"><div>Status</div><div>—</div></div>`;
-    }
-  } catch (e) {
-    $("#liveStateBlock", UI.drawerBody).innerHTML = `<div class="meta"><div>Status</div><div>n/a</div></div>`;
-  }
+  const rosterBlock = (side) => {
+    const players =
+      side?.players ||
+      side?.baseInfo?.players ||
+      []; // flexible
 
-  // 2) Team rosters
-  const teamBlocks = $("#teamBlocks", UI.drawerBody);
-  for (const t of (seriesNode.teams||[]).slice(0,2)) {
-    const teamName = UTIL.teamName(t);
-    const wrap = document.createElement("div");
-    wrap.className="card";
-    wrap.innerHTML = `<h4 style="margin:4px 0 8px;">${teamName}</h4><div class="roster" data-team="${teamName}"><div class="none">Loading roster…</div></div>`;
-    teamBlocks.appendChild(wrap);
+    if (!players?.length) return `<small>No roster available</small>`;
 
-    // roster by name (API you showed has players(filter:{teamIdFilter:{id}}) where we need ID – we’ll best-effort search by name then use id; fallback to name-only)
-    try {
-      const teamInfo = await GQL.searchTeamByName(teamName); // returns first match or null
-      let roster = [];
-      if (teamInfo?.id) {
-        roster = await GQL.fetchTeamRoster(teamInfo.id);
-      }
-      const host = $(`.roster[data-team="${CSS.escape(teamName)}"]`, wrap);
-      host.innerHTML = "";
-      if (!roster.length) {
-        host.innerHTML = `<div class="none">No players found.</div>`;
-      } else {
-        roster.forEach(p=>{
-          const card = document.createElement("div");
-          card.className="player";
-          card.innerHTML = `
-            <div class="nick">${p.nickname || "—"}</div>
-            <div class="game">${p.title?.name || ""}</div>
-          `;
-          host.appendChild(card);
-        });
-      }
-    } catch (err) {
-      const host = $(`.roster[data-team="${CSS.escape(teamName)}"]`, wrap);
-      host.innerHTML = `<div class="none">Roster unavailable.</div>`;
-    }
-  }
+    return `
+      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:6px">
+        ${players.slice(0,10).map(p => `
+          <li>${p.nickname || p.name || "Player"}
+            ${p.kills != null ? `<small> · ${p.kills}/${p.deaths ?? 0} K/D</small>` : "" }
+          </li>`).join("")}
+      </ul>
+    `;
+  };
+
+  const liveBadge = m.live ? `<span class="badge badge--live">LIVE</span>` : "";
+
+  drawerBody.innerHTML = `
+    <h3 style="margin:0 0 4px 0;display:flex;gap:8px;align-items:center">
+      ${liveBadge}
+      ${series?.tournament?.nameShortened || series?.tournament?.name || "Match"}
+    </h3>
+    <small>${fmt || ""}</small>
+
+    <dl class="meta">
+      ${meta("Start", m.live ? "Live now" : `${fmtTime(series?.startTimeScheduled || m.time)} (${relFromNow(series?.startTimeScheduled || m.time)})`)}
+      ${meta("Game", series?.title?.nameShortened || m.title || "")}
+    </dl>
+
+    <div class="divider"></div>
+
+    <div class="roster">
+      <div>
+        <h4>${teamName(teams[0])}</h4>
+        ${rosterBlock(teams[0])}
+      </div>
+      <div>
+        <h4>${teamName(teams[1])}</h4>
+        ${rosterBlock(teams[1])}
+      </div>
+    </div>
+
+    ${state ? `
+      <div class="divider"></div>
+      <h4>Live State</h4>
+      <dl class="meta">
+        ${meta("Format", state.format)}
+        ${meta("Started", String(!!state.started))}
+        ${meta("Finished", String(!!state.finished))}
+        ${meta("Updated", state.updatedAt ? `${fmtTime(state.updatedAt)} (${relFromNow(state.updatedAt)})` : "—")}
+      </dl>
+    ` : ""}
+  `;
 }
 
-/* -------------------------
-   GraphQL (network)
-------------------------- */
-const GQL = {
-  async call(query, variables = {}) {
-    if (!STORE.endpoint) throw new Error("Missing GraphQL endpoint");
-    const headers = {"Content-Type":"application/json"};
-    if (STORE.apiKey) headers["Authorization"] = STORE.apiKey;
-    const res = await fetch(STORE.endpoint, {
-      method:"POST",
-      headers,
-      body: JSON.stringify({ query, variables })
-    });
-    const json = await res.json();
-    if (json.errors) throw new Error(json.errors.map(e=>e.message).join("; "));
-    return json.data;
-  },
+// ---- Polling / Controls --------------------------------------------------
+const refreshLiveBtn = $("#refreshLiveBtn");
+const refreshUpcomingBtn = $("#refreshUpcomingBtn");
+const upcomingWindow = $("#upcomingWindow");
 
-  // allSeries within time window (UTC)
-  async fetchLiveAndUpcoming(hours) {
-    // Window: now .. now+hours
-    const now = new Date();
-    const end = new Date(now.getTime() + hours*3600*1000);
-    const gte = now.toISOString();
-    const lte = end.toISOString();
+let liveTimer = null;
+let upcTimer  = null;
 
-    const query = `
-      query GetAllSeriesWindow($gte:String!,$lte:String!,$after:Cursor) {
-        allSeries(
-          filter:{ startTimeScheduled:{ gte:$gte, lte:$lte } }
-          orderBy: StartTimeScheduled
-          after: $after
-          first: 40
-        ){
-          totalCount
-          pageInfo{ hasPreviousPage hasNextPage startCursor endCursor }
-          edges{
-            cursor
-            node{
-              id
-              startTimeScheduled
-              title{ nameShortened }
-              tournament{ nameShortened }
-              format{ name nameShortened }
-              teams{ baseInfo{ name } scoreAdvantage }
-            }
-          }
-        }
-      }`;
-    const data = await this.call(query, { gte, lte, after: null });
-    const list = (data?.allSeries?.edges||[]).map(e=>e.node);
-    const nowMs = Date.now();
-    const live = list.filter(s => new Date(s.startTimeScheduled).getTime() <= nowMs); // rough heuristic
-    const upcoming = list.filter(s => new Date(s.startTimeScheduled).getTime() > nowMs);
+async function loadLive(){
+  const list = await fetchLive(6);
+  renderGrid(liveGrid, list, "No live matches right now.");
+  setStamp(liveLast);
+}
+async function loadUpcoming(){
+  const hours = parseInt(upcomingWindow.value || "24", 10);
+  const list  = await fetchUpcoming(hours);
+  renderGrid(upcomingGrid, list, "Nothing scheduled in this window.");
+  setStamp(upcomingLast);
+}
+function refreshAll(){
+  loadLive();
+  loadUpcoming();
+}
+refreshLiveBtn.addEventListener("click", loadLive);
+refreshUpcomingBtn.addEventListener("click", loadUpcoming);
+upcomingWindow.addEventListener("change", loadUpcoming);
 
-    STORE.cursors = {
-      startCursor: data?.allSeries?.pageInfo?.startCursor || null,
-      endCursor: data?.allSeries?.pageInfo?.endCursor || null,
-      hasNext: !!data?.allSeries?.pageInfo?.hasNextPage,
-      hasPrev: !!data?.allSeries?.pageInfo?.hasPreviousPage,
-    };
-    return { live, upcoming };
-  },
-
-  async fetchSeriesState(seriesId){
-    const q = `
-      query GetSeriesState($id:ID!){
-        seriesState(id:$id){
-          valid updatedAt format started finished
-          teams{ name won }
-          games(filter:{ started:true, finished:false }){
-            sequenceNumber
-            teams{ name players{ name kills deaths netWorth money position{ x y } } }
-          }
-        }
-      }`;
-    const data = await this.call(q, { id: String(seriesId) });
-    return data?.seriesState;
-  },
-
-  // Used to find ID for the roster call when we only have a name
-  async searchTeamByName(name){
-    const q = `
-      query FindTeam($name:String!){
-        teams(first:1, filter:{ name:{ equals:$name } }){
-          edges{ node{ id name } }
-        }
-      }`;
-    try{
-      const data = await this.call(q, { name });
-      return data?.teams?.edges?.[0]?.node || null;
-    }catch{ return null; }
-  },
-
-  async fetchTeamRoster(teamId){
-    const q = `
-      query GetTeamRoster($id:ID!){
-        players(filter:{ teamIdFilter:{ id:$id } }){
-          edges{ node{ id nickname title{ name } } }
-          pageInfo{ hasNextPage }
-        }
-      }`;
-    const data = await this.call(q, { id: String(teamId) });
-    return (data?.players?.edges||[]).map(e=>e.node);
-  }
-};
-
-/* -------------------------
-   Loaders
-------------------------- */
-async function loadWindowIntoUI() {
-  try{
-    const hours = Number(UI.windowSel.value);
-    STORE.currentWindowHours = hours;
-    const { live, upcoming } = await GQL.fetchLiveAndUpcoming(hours);
-    renderSeriesList(UI.liveList, live, {live:true});
-    renderSeriesList(UI.upcomingList, upcoming, {live:false});
-    UTIL.setUpdated();
-    UI.next.disabled = !STORE.cursors.hasNext;
-    UI.prev.disabled = !STORE.cursors.hasPrev;
-  }catch(err){
-    console.error(err);
-    UI.liveList.innerHTML = `<div class="card none">Error: ${err.message}</div>`;
-    UI.upcomingList.innerHTML = "";
-  }
+// Auto-refresh: live every 20s, upcoming every 90s
+function startPolling(){
+  clearInterval(liveTimer); clearInterval(upcTimer);
+  liveTimer = setInterval(loadLive, 20_000);
+  upcTimer  = setInterval(loadUpcoming, 90_000);
 }
 
-/* -------------------------
-   Pagination buttons (optional, wired to endCursor/startCursor if you later extend)
-------------------------- */
-UI.next.addEventListener("click", () => {
-  // Implementation note:
-  // This basic build fetches the first page for the time window.
-  // If you want true cursor pagination, keep endCursor in STORE and
-  // pass $after:endCursor on subsequent GQL.fetchLiveAndUpcoming calls.
-  alert("For brevity, next/prev are stubs. If you want, I’ll wire them to use endCursor/startCursor next.");
-});
+// Minimal toast
+function toast(msg){
+  const el = document.createElement("div");
+  el.textContent = msg;
+  el.style.cssText = `
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    background:#0e1520;border:1px solid var(--ring);padding:8px 12px;border-radius:10px;
+    color:var(--text);box-shadow:${getComputedStyle(document.documentElement).getPropertyValue('--shadow')};
+    z-index:9999;
+  `;
+  document.body.appendChild(el);
+  setTimeout(()=> el.remove(), 1600);
+}
 
-/* -------------------------
-   Tabs
-------------------------- */
-UI.tabs.forEach(t=>{
-  t.addEventListener("click", ()=>{
-    UI.tabs.forEach(x=>x.classList.remove("active"));
-    t.classList.add("active");
-    STORE.currentTab = t.dataset.tab;
-    $$(".tab-pane").forEach(p=>p.classList.remove("active"));
-    (STORE.currentTab === "live" ? UI.liveList : UI.upcomingList).classList.add("active");
-  });
-});
-
-/* -------------------------
-   JSON Paste mode
-------------------------- */
-UI.renderJsonBtn.addEventListener("click", ()=>{
-  let json;
-  try{
-    json = JSON.parse(UI.jsonPaste.value || "{}");
-  }catch(e){
-    alert("Invalid JSON"); return;
-  }
-  // detect allSeries shape
-  const series = json?.data?.allSeries?.edges?.map(e=>e.node) ?? [];
-  if (series.length){
-    const nowMs = Date.now();
-    const live = series.filter(s => new Date(s.startTimeScheduled).getTime() <= nowMs);
-    const upcoming = series.filter(s => new Date(s.startTimeScheduled).getTime() > nowMs);
-    renderSeriesList(UI.liveList, live, {live:true});
-    renderSeriesList(UI.upcomingList, upcoming, {live:false});
-    UTIL.setUpdated();
-    STORE.lastPayloadType = "json";
-    return;
-  }
-  alert("Paste an allSeries payload.");
-});
-
-/* -------------------------
-   Connection bar
-------------------------- */
-UI.saveConn.addEventListener("click", ()=>{
-  STORE.endpoint = UI.gqlEndpoint.value.trim();
-  STORE.apiKey = UI.gqlApiKey.value.trim();
-  localStorage.setItem("gql:endpoint", STORE.endpoint);
-  localStorage.setItem("gql:token", STORE.apiKey);
-  loadWindowIntoUI();
-});
-UI.loadLive.addEventListener("click", ()=>{ STORE.currentTab="live"; loadWindowIntoUI(); });
-UI.loadUpcoming.addEventListener("click", ()=>{ STORE.currentTab="upcoming"; loadWindowIntoUI(); });
-
-/* -------------------------
-   Boot
-------------------------- */
-(async function boot(){
-  if (STORE.endpoint) {
-    await loadWindowIntoUI();
-  } else {
-    UI.liveList.innerHTML = `<div class="card none">Set your GraphQL endpoint above, then click “Load Live”.</div>`;
-  }
-})();
+// ---- Boot ----------------------------------------------------------------
+refreshAll();
+startPolling();
