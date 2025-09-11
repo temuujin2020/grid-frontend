@@ -1,65 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Esports — Live & Upcoming</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="utf-8"/>
+  <title>Esports — One Live Match</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Esports — Live & Upcoming</h1>
-
-    <!-- Small, non-intrusive proxy control (no secrets) -->
-    <div class="proxy-control">
-      <input id="proxyInput" type="url" placeholder="https://grid-proxy.onrender.com"
-             aria-label="Proxy base URL" />
-      <button id="saveProxyBtn" title="Save proxy URL">Save</button>
-    </div>
+  <header class="bar">
+    <h1>Live Match</h1>
+    <button id="refreshBtn" class="ghost">Refresh</button>
   </header>
 
-  <main class="container">
-    <section class="lane">
-      <div class="lane-head">
-        <h2>Live</h2>
-        <div class="lane-actions">
-          <button id="refreshLiveBtn" class="ghost">Refresh</button>
-          <span id="liveLastUpdated" class="last-updated">—</span>
-        </div>
-      </div>
-      <div id="liveGrid" class="cards"></div>
-    </section>
-
-    <section class="lane">
-      <div class="lane-head">
-        <h2>Upcoming</h2>
-        <div class="lane-actions">
-          <label class="ghost small">
-            Window:
-            <select id="upcomingWindow">
-              <option value="6">Next 6h</option>
-              <option value="12">Next 12h</option>
-              <option value="24" selected>Next 24h</option>
-              <option value="48">Next 48h</option>
-            </select>
-          </label>
-          <button id="refreshUpcomingBtn" class="ghost">Refresh</button>
-          <span id="upcomingLastUpdated" class="last-updated">—</span>
-        </div>
-      </div>
-      <div id="upcomingGrid" class="cards"></div>
+  <main class="wrap">
+    <div id="error" class="hidden"></div>
+    <section id="liveSlot" class="slot">
+      <div class="card ghost">Looking for a live match…</div>
     </section>
   </main>
 
-  <!-- Details Drawer -->
-  <aside id="drawer" class="drawer" aria-hidden="true">
-    <div class="drawer__panel">
-      <button id="drawerClose" class="drawer__close" aria-label="Close">×</button>
-      <div id="drawerBody" class="drawer__body"></div>
-    </div>
-    <div id="drawerBackdrop" class="drawer__backdrop"></div>
-  </aside>
-
-  <script src="./app.js"></script>
+  <script src="one-live.js" defer></script>
 </body>
 </html>
