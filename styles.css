@@ -1,36 +1,56 @@
 :root{
-  --bg:#0b0f14;--panel:#121820;--ink:#dce6f3;--muted:#9fb2c7;
-  --accent:#ff3b30;--stroke:#ff3b30;--chip:#1e2835;
-  --radius:14px;--pad:14px;--gap:12px;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  --bg:#0b0f14;
+  --card:#111823;
+  --card2:#0e1620;
+  --text:#e7edf3;
+  --muted:#8aa0b8;
+  --accent:#3aa0ff;
+  --live:#ff4d4d;
+  --ok:#46d46b;
+  --border:#1b2635;
 }
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);margin:0}
-.bar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:#0f141b;border-bottom:1px solid #1a2431}
-h1{font-size:18px;margin:0}
-.wrap{max-width:920px;margin:30px auto;padding:0 16px}
-.slot{display:grid;gap:16px}
-.hidden{display:none}
-.ghost{opacity:.7}
-#error{background:#441919;border:1px solid #7f2a2a;color:#ffd7d7;padding:10px 12px;border-radius:10px;margin-bottom:16px}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+h2{margin:12px 0 10px;font-size:18px}
+.small{font-size:12px}
+.dim{color:var(--muted)}
+.bar{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:linear-gradient(to bottom,rgba(11,15,20,.98),rgba(11,15,20,.75))}
+.title{font-weight:700;font-size:22px}
+.controls{display:flex;gap:8px;align-items:center}
+select,button{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+button.link{border:0;background:transparent;color:var(--accent);cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
 
 .card{
-  background:var(--panel);
-  border:1.5px solid #1b2736;
-  border-radius:var(--radius);
-  padding:var(--pad);
-  display:flex;
-  align-items:center;
-  gap:var(--gap);
-  box-shadow:0 6px 24px rgba(0,0,0,.25);
+  background:linear-gradient(180deg,var(--card),var(--card2));
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  display:flex;flex-direction:column;gap:6px;
+  min-height:72px;
 }
-.card.live{ border-color: var(--stroke); box-shadow:0 10px 30px rgba(255,59,48,.15); }
+.card.live{border-color:rgba(255,77,77,.45);box-shadow:0 0 0 1px rgba(255,77,77,.15) inset}
+.card .row{display:flex;justify-content:space-between;gap:10px}
+.card .event{color:var(--muted);font-size:12px}
+.team{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.score{font-weight:700}
+.status{font-weight:700;color:var(--live)}
+.time{color:var(--muted)}
+.badge{padding:2px 6px;border-radius:6px;border:1px solid var(--border);color:var(--muted);font-size:11px}
+a.card{color:inherit;text-decoration:none}
 
-.left{display:flex;align-items:center;gap:10px;min-width:0}
-.badge{background:var(--accent);color:#fff;font-weight:700;font-size:12px;letter-spacing:.4px;padding:4px 8px;border-radius:999px;text-transform:uppercase}
-.meta{font-size:12px;color:var(--muted)}
-.teams{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.team{background:var(--chip);padding:6px 10px;border-radius:10px;font-weight:600}
-.title{font-weight:700}
-button.ghost{background:transparent;border:1px solid #263449;border-radius:10px;color:var(--ink);padding:6px 10px;cursor:pointer}
-button.ghost:hover{background:#15202c}
+.empty{
+  background:var(--card2);
+  border:1px dashed var(--border);
+  color:var(--muted);
+  border-radius:12px;
+  padding:12px;
+}
+
+/* Modal */
+dialog{border:0;background:transparent}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:640px;width:calc(100vw - 24px);padding:14px;margin:auto}
+.close{float:right;background:transparent;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+.details-body h3{margin:0 0 6px}
+.details-body .grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
