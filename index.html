@@ -1,142 +1,85 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  />
-  <title>Esports Data Preview</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Esports Live & Upcoming</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="site-header">
-    <h1>Esports Data Preview</h1>
-    <div class="subtitle">Paste a GraphQL JSON response and render it</div>
+  <header class="topbar">
+    <h1>Esports Live & Upcoming</h1>
+
+    <!-- GraphQL connection -->
+    <div class="conn">
+      <input id="gqlEndpoint" placeholder="GraphQL endpoint (https://...)" />
+      <input id="gqlApiKey" placeholder="Authorization (optional)" />
+      <button id="saveConn" class="btn">Save</button>
+    </div>
   </header>
 
-  <main class="container">
-    <!-- Input panel -->
-    <section class="panel">
-      <div class="panel-header">
-        <h2>1) Paste JSON Response</h2>
-        <div class="actions">
-          <button id="btnSampleSeries" class="btn ghost">Load sample: AllSeries</button>
-          <button id="btnSampleTeamStats" class="btn ghost">Load sample: Team Stats</button>
-        </div>
-      </div>
-      <textarea id="jsonInput" spellcheck="false" placeholder='Paste the exact JSON response here...'></textarea>
-      <div class="row">
-        <button id="btnRender" class="btn primary">Render</button>
-        <div id="parseStatus" class="muted"></div>
-      </div>
-    </section>
+  <main class="layout">
+    <aside class="filters">
+      <div class="card">
+        <h2>Filters</h2>
+        <label class="row">
+          <span>Window</span>
+          <select id="window">
+            <option value="6">Next 6h</option>
+            <option value="12">Next 12h</option>
+            <option value="24" selected>Next 24h</option>
+            <option value="48">Next 48h</option>
+          </select>
+        </label>
 
-    <!-- Output: Auto-detector summary -->
-    <section class="panel">
-      <div class="panel-header">
-        <h2>2) Auto-detected Payload & Tools</h2>
-      </div>
-      <div id="detector" class="grid grid-2">
-        <div class="card">
-          <div class="label">Detected Type</div>
-          <div id="detectedType" class="value">—</div>
-        </div>
-        <div class="card">
-          <div class="label">Hints</div>
-          <div id="detectedHint" class="value small">Paste any of: allSeries, organizations/organization, teams/team, players (or roster), seriesState, teamStatistics/playerStatistics.</div>
-        </div>
-      </div>
-
-      <div id="paginationTools" class="tools hidden">
-        <h3>Pagination</h3>
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="label">hasNextPage</div>
-            <div id="hasNext" class="value">—</div>
-          </div>
-          <div class="card">
-            <div class="label">hasPreviousPage</div>
-            <div id="hasPrev" class="value">—</div>
-          </div>
-          <div class="card">
-            <div class="label">startCursor</div>
-            <div id="startCursor" class="mono small break">—</div>
-          </div>
-          <div class="card">
-            <div class="label">endCursor</div>
-            <div id="endCursor" class="mono small break">—</div>
-          </div>
+        <div class="row">
+          <button id="loadLive" class="btn primary">Load Live</button>
+          <button id="loadUpcoming" class="btn">Load Upcoming</button>
         </div>
 
-        <details class="details">
-          <summary>Show “next page” GraphQL template (uses endCursor)</summary>
-          <pre id="nextQuery" class="codeblock">// Paste a response with hasNextPage: true first.</pre>
-        </details>
-      </div>
-    </section>
-
-    <!-- Render targets -->
-    <section id="renderAllSeries" class="panel hidden">
-      <div class="panel-header">
-        <h2>Series (Matches)</h2>
-      </div>
-      <div id="seriesSummary" class="muted"></div>
-      <div class="table" role="table" aria-label="Series list">
-        <div class="table-row head" role="row">
-          <div class="cell">Start (UTC)</div>
-          <div class="cell">Game</div>
-          <div class="cell">Tournament</div>
-          <div class="cell">Format</div>
-          <div class="cell">Teams</div>
+        <div class="row gap">
+          <button id="prevPage" class="btn small" disabled>Prev</button>
+          <button id="nextPage" class="btn small" disabled>Next</button>
         </div>
-        <div id="seriesRows"></div>
-      </div>
-    </section>
 
-    <section id="renderOrganizations" class="panel hidden">
-      <div class="panel-header">
-        <h2>Organizations</h2>
+        <div class="hint">Tip: click a match to view details, rosters, and live state.</div>
       </div>
-      <div id="orgCards" class="cards"></div>
-    </section>
 
-    <section id="renderTeams" class="panel hidden">
-      <div class="panel-header">
-        <h2>Teams</h2>
+      <div class="card">
+        <h3>Sample JSON (paste & render)</h3>
+        <textarea id="jsonPaste" placeholder="Paste raw GraphQL JSON result here…"></textarea>
+        <div class="row">
+          <button id="renderJson" class="btn">Render JSON</button>
+        </div>
       </div>
-      <div id="teamsMeta" class="muted"></div>
-      <div id="teamCards" class="cards"></div>
-    </section>
+    </aside>
 
-    <section id="renderPlayers" class="panel hidden">
-      <div class="panel-header">
-        <h2>Players</h2>
+    <section class="content">
+      <div class="tabs">
+        <button data-tab="live" class="tab active">Live</button>
+        <button data-tab="upcoming" class="tab">Upcoming</button>
       </div>
-      <div id="playerCards" class="cards"></div>
-    </section>
 
-    <section id="renderSeriesState" class="panel hidden">
-      <div class="panel-header">
-        <h2>Live Series State</h2>
-      </div>
-      <div id="liveHeader" class="muted"></div>
-      <div id="liveTeams" class="cards"></div>
-      <div id="liveGames"></div>
-    </section>
-
-    <section id="renderTeamStats" class="panel hidden">
-      <div class="panel-header">
-        <h2>Team / Player Statistics</h2>
-      </div>
-      <div id="statsCards" class="cards"></div>
+      <section id="liveList" class="grid tab-pane active" aria-live="polite"></section>
+      <section id="upcomingList" class="grid tab-pane" aria-live="polite"></section>
     </section>
   </main>
 
+  <!-- Drawer -->
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer__panel">
+      <button id="closeDrawer" class="icon-btn" aria-label="Close">✕</button>
+      <div id="drawerBody" class="drawer__body">
+        <!-- Filled by JS -->
+      </div>
+    </div>
+    <div class="drawer__scrim" id="scrim"></div>
+  </aside>
+
   <footer class="footer">
-    Built for quick iteration: paste JSON → render → copy next query
+    <span id="lastUpdated">—</span>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
