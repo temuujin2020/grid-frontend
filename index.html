@@ -1,84 +1,64 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Esports Live & Upcoming</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Esports — Live & Upcoming</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>Esports Live & Upcoming</h1>
+    <h1>Esports — Live & Upcoming</h1>
 
-    <!-- GraphQL connection -->
-    <div class="conn">
-      <input id="gqlEndpoint" placeholder="GraphQL endpoint (https://...)" />
-      <input id="gqlApiKey" placeholder="Authorization (optional)" />
-      <button id="saveConn" class="btn">Save</button>
+    <!-- Small, non-intrusive proxy control (no secrets) -->
+    <div class="proxy-control">
+      <input id="proxyInput" type="url" placeholder="https://grid-proxy.onrender.com"
+             aria-label="Proxy base URL" />
+      <button id="saveProxyBtn" title="Save proxy URL">Save</button>
     </div>
   </header>
 
-  <main class="layout">
-    <aside class="filters">
-      <div class="card">
-        <h2>Filters</h2>
-        <label class="row">
-          <span>Window</span>
-          <select id="window">
-            <option value="6">Next 6h</option>
-            <option value="12">Next 12h</option>
-            <option value="24" selected>Next 24h</option>
-            <option value="48">Next 48h</option>
-          </select>
-        </label>
-
-        <div class="row">
-          <button id="loadLive" class="btn primary">Load Live</button>
-          <button id="loadUpcoming" class="btn">Load Upcoming</button>
-        </div>
-
-        <div class="row gap">
-          <button id="prevPage" class="btn small" disabled>Prev</button>
-          <button id="nextPage" class="btn small" disabled>Next</button>
-        </div>
-
-        <div class="hint">Tip: click a match to view details, rosters, and live state.</div>
-      </div>
-
-      <div class="card">
-        <h3>Sample JSON (paste & render)</h3>
-        <textarea id="jsonPaste" placeholder="Paste raw GraphQL JSON result here…"></textarea>
-        <div class="row">
-          <button id="renderJson" class="btn">Render JSON</button>
+  <main class="container">
+    <section class="lane">
+      <div class="lane-head">
+        <h2>Live</h2>
+        <div class="lane-actions">
+          <button id="refreshLiveBtn" class="ghost">Refresh</button>
+          <span id="liveLastUpdated" class="last-updated">—</span>
         </div>
       </div>
-    </aside>
+      <div id="liveGrid" class="cards"></div>
+    </section>
 
-    <section class="content">
-      <div class="tabs">
-        <button data-tab="live" class="tab active">Live</button>
-        <button data-tab="upcoming" class="tab">Upcoming</button>
+    <section class="lane">
+      <div class="lane-head">
+        <h2>Upcoming</h2>
+        <div class="lane-actions">
+          <label class="ghost small">
+            Window:
+            <select id="upcomingWindow">
+              <option value="6">Next 6h</option>
+              <option value="12">Next 12h</option>
+              <option value="24" selected>Next 24h</option>
+              <option value="48">Next 48h</option>
+            </select>
+          </label>
+          <button id="refreshUpcomingBtn" class="ghost">Refresh</button>
+          <span id="upcomingLastUpdated" class="last-updated">—</span>
+        </div>
       </div>
-
-      <section id="liveList" class="grid tab-pane active" aria-live="polite"></section>
-      <section id="upcomingList" class="grid tab-pane" aria-live="polite"></section>
+      <div id="upcomingGrid" class="cards"></div>
     </section>
   </main>
 
-  <!-- Drawer -->
+  <!-- Details Drawer -->
   <aside id="drawer" class="drawer" aria-hidden="true">
     <div class="drawer__panel">
-      <button id="closeDrawer" class="icon-btn" aria-label="Close">✕</button>
-      <div id="drawerBody" class="drawer__body">
-        <!-- Filled by JS -->
-      </div>
+      <button id="drawerClose" class="drawer__close" aria-label="Close">×</button>
+      <div id="drawerBody" class="drawer__body"></div>
     </div>
-    <div class="drawer__scrim" id="scrim"></div>
+    <div id="drawerBackdrop" class="drawer__backdrop"></div>
   </aside>
-
-  <footer class="footer">
-    <span id="lastUpdated">—</span>
-  </footer>
 
   <script src="./app.js"></script>
 </body>
