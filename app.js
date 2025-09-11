@@ -1,435 +1,473 @@
-/* =====================================================================
-   GRID Frontend – Minimal, Operable JS (single fetch per cycle)
-   - Single in-flight request guard + cache
-   - Utilities namespaced under UTIL (no shadowing)
-   - Renders Live + Upcoming, collapsible cards, details modal
-   - Shows "leading" only if > 0
-   ===================================================================== */
-(() => {
-  // ------- DOM roots -------
-  const ROOT          = document.getElementById("matchesRoot");
-  const LIST_LIVE     = document.getElementById("listLive");
-  const LIST_UP       = document.getElementById("listUpcoming");
-  const LAST          = document.getElementById("lastUpdated");
-  const REFRESH_SELECT= document.getElementById("refreshSelect");
-  const TEAM_BADGE    = document.getElementById("teamBadge");
-  const UP_HOURS_SPAN = document.getElementById("upHoursSpan");
+/* Esports Data Preview — paste JSON, auto-detect type, render UI
+   Works with:
+   - data.allSeries
+   - data.organizations / data.organization
+   - data.teams / data.team
+   - data.players (and team roster result)
+   - data.seriesState
+   - data.teamStatistics / data.playerStatistics
+*/
 
-  if (!ROOT || !LIST_LIVE || !LIST_UP) return;
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  // ------- Config -------
-  const API_BASE = (ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series").replace(/\/+$/, "");
-  const urlParams = new URLSearchParams(location.search);
+const jsonInputEl = $("#jsonInput");
+const parseStatusEl = $("#parseStatus");
+const detectedTypeEl = $("#detectedType");
+const detectedHintEl = $("#detectedHint");
 
-  // sensible defaults + URL overrides
-  let refreshMs      = Number(urlParams.get("refresh")) || Number(ROOT.dataset.refresh) || 15000;
-  const TEAM_PIN     = (urlParams.get("team") || "").trim().toLowerCase();
-  const LIMIT_LIVE   = Number(urlParams.get("limitLive"))    || 8;
-  const LIMIT_UP     = Number(urlParams.get("limitUpcoming")) || 8;
-  const UPC_HOURS    = Number(urlParams.get("hoursUpcoming")) || 24;
+// Pagination tools
+const toolsWrap = $("#paginationTools");
+const hasNextEl = $("#hasNext");
+const hasPrevEl = $("#hasPrev");
+const startCursorEl = $("#startCursor");
+const endCursorEl = $("#endCursor");
+const nextQueryEl = $("#nextQuery");
 
-  if (UP_HOURS_SPAN) UP_HOURS_SPAN.textContent = String(UPC_HOURS);
+// Render targets
+const secAllSeries = $("#renderAllSeries");
+const seriesRowsEl = $("#seriesRows");
+const seriesSummaryEl = $("#seriesSummary");
 
-  // Hook refresh selector (if present)
-  if (REFRESH_SELECT) {
-    const optVal = String(refreshMs);
-    const found  = [...REFRESH_SELECT.options].some(o => o.value === optVal);
-    if (found) REFRESH_SELECT.value = optVal;
-    REFRESH_SELECT.addEventListener("change", () => {
-      refreshMs = Number(REFRESH_SELECT.value) || 15000;
-      schedule();  // rearm
-    });
+const secOrgs = $("#renderOrganizations");
+const orgCardsEl = $("#orgCards");
+
+const secTeams = $("#renderTeams");
+const teamCardsEl = $("#teamCards");
+const teamsMetaEl = $("#teamsMeta");
+
+const secPlayers = $("#renderPlayers");
+const playerCardsEl = $("#playerCards");
+
+const secSeriesState = $("#renderSeriesState");
+const liveHeaderEl = $("#liveHeader");
+const liveTeamsEl = $("#liveTeams");
+const liveGamesEl = $("#liveGames");
+
+const secStats = $("#renderTeamStats");
+const statsCardsEl = $("#statsCards");
+
+// Sample loaders
+$("#btnSampleSeries")?.addEventListener("click", () => {
+  jsonInputEl.value = SAMPLE_ALL_SERIES_JSON;
+  parseStatusEl.textContent = "Loaded sample series JSON.";
+});
+
+$("#btnSampleTeamStats")?.addEventListener("click", () => {
+  jsonInputEl.value = SAMPLE_TEAM_STATS_JSON;
+  parseStatusEl.textContent = "Loaded sample team statistics JSON.";
+});
+
+$("#btnRender")?.addEventListener("click", () => {
+  safeRender();
+});
+
+function safeRender() {
+  // reset sections
+  [secAllSeries, secOrgs, secTeams, secPlayers, secSeriesState, secStats, toolsWrap]
+    .forEach(sec => sec.classList.add("hidden"));
+  seriesRowsEl.innerHTML = "";
+  orgCardsEl.innerHTML = "";
+  teamCardsEl.innerHTML = "";
+  playerCardsEl.innerHTML = "";
+  liveHeaderEl.textContent = "";
+  liveTeamsEl.innerHTML = "";
+  liveGamesEl.innerHTML = "";
+  statsCardsEl.innerHTML = "";
+  detectedTypeEl.textContent = "—";
+
+  let obj;
+  try {
+    obj = JSON.parse(jsonInputEl.value);
+  } catch (e) {
+    parseStatusEl.textContent = "JSON parse error: " + e.message;
+    parseStatusEl.style.color = "var(--danger)";
+    return;
+  }
+  parseStatusEl.textContent = "Parsed OK";
+  parseStatusEl.style.color = "var(--muted)";
+
+  detectAndRender(obj);
+}
+
+function detectAndRender(payload) {
+  const d = payload?.data || payload; // tolerate top-level data
+  let detected = "Unknown";
+  let hint = "";
+  let pageInfo = null;
+
+  // 1) Series (matches)
+  if (d?.allSeries?.edges?.length) {
+    detected = "allSeries";
+    renderAllSeries(d.allSeries);
+    pageInfo = d.allSeries.pageInfo ?? null;
+  }
+  // 2) Org(s)
+  else if (d?.organizations?.edges?.length || d?.organization) {
+    detected = d?.organization ? "organization (single)" : "organizations";
+    renderOrganizations(d.organizations?.edges, d.organization);
+  }
+  // 3) Team(s)
+  else if (d?.teams?.edges?.length || d?.team) {
+    detected = d?.team ? "team (single)" : "teams";
+    renderTeams(d.teams?.edges, d.teams?.totalCount, d.teams?.pageInfo, d.team);
+    pageInfo = d.teams?.pageInfo ?? null;
+  }
+  // 4) Players / roster-like
+  else if (d?.players?.edges?.length) {
+    detected = "players (list/roster)";
+    renderPlayers(d.players.edges);
+    pageInfo = d.players?.pageInfo ?? null;
+  }
+  // 5) Live series state
+  else if (d?.seriesState) {
+    detected = "seriesState (live)";
+    renderSeriesState(d.seriesState);
+  }
+  // 6) Team / Player statistics aggregation
+  else if (d?.teamStatistics || d?.playerStatistics) {
+    detected = d?.teamStatistics ? "teamStatistics" : "playerStatistics";
+    renderStats(d.teamStatistics || d.playerStatistics);
   }
 
-  // Team pin badge (optional)
-  if (TEAM_PIN && TEAM_BADGE) {
-    TEAM_BADGE.hidden = false;
-    TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
+  // Fill top detector UI
+  detectedTypeEl.textContent = detected;
+  detectedHintEl.textContent = hint || detectedHintEl.textContent;
+
+  // Pagination tools
+  if (pageInfo) {
+    toolsWrap.classList.remove("hidden");
+    hasNextEl.textContent = String(!!pageInfo.hasNextPage);
+    hasPrevEl.textContent = String(!!pageInfo.hasPreviousPage);
+    startCursorEl.textContent = pageInfo.startCursor ?? "—";
+    endCursorEl.textContent = pageInfo.endCursor ?? "—";
+    nextQueryEl.textContent = buildNextQueryTemplate(detected, pageInfo.endCursor);
+  } else {
+    toolsWrap.classList.add("hidden");
+  }
+}
+
+/* ---------- Renderers ---------- */
+
+function renderAllSeries(node) {
+  secAllSeries.classList.remove("hidden");
+  const total = node.totalCount ?? node.edges.length;
+  seriesSummaryEl.textContent = `Total in window: ${total} • Showing ${node.edges.length}`;
+
+  const frag = document.createDocumentFragment();
+  node.edges.forEach(({ node: n }) => {
+    const row = document.createElement("div");
+    row.className = "table-row";
+    row.innerHTML = `
+      <div class="cell">${fmtUTC(n.startTimeScheduled)}</div>
+      <div class="cell">${safe(n.title?.nameShortened)}</div>
+      <div class="cell">${safe(n.tournament?.nameShortened || n.tournament?.name || "—")}</div>
+      <div class="cell"><span class="badge">${safe(n.format?.nameShortened || n.format?.name || "—")}</span></div>
+      <div class="cell">
+        ${renderTeamChipsInline(n.teams)}
+      </div>
+    `;
+    frag.appendChild(row);
+  });
+  seriesRowsEl.appendChild(frag);
+}
+
+function renderOrganizations(edges, single) {
+  secOrgs.classList.remove("hidden");
+  const items = single ? [{ node: single }] : edges || [];
+  if (!items.length) {
+    orgCardsEl.innerHTML = `<div class="muted">No organizations.</div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  items.forEach(({ node }) => {
+    const teams = (node.teams || []).map(t => t?.name).filter(Boolean);
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="label">Organization</div>
+      <div class="value">${safe(node.name)} <span class="badge mono">#${node.id}</span></div>
+      <div class="label" style="margin-top:8px;">Teams (${teams.length})</div>
+      <div class="value small">${teams.length ? teams.join(", ") : "—"}</div>
+    `;
+    frag.appendChild(el);
+  });
+  orgCardsEl.appendChild(frag);
+}
+
+function renderTeams(edges, totalCount, pageInfo, single) {
+  secTeams.classList.remove("hidden");
+  if (single) {
+    teamsMetaEl.textContent = `Single team`;
+    edges = [{ node: single }];
+  } else {
+    teamsMetaEl.textContent = `Total: ${totalCount ?? edges.length} • Showing: ${edges.length}`;
+  }
+  const frag = document.createDocumentFragment();
+  edges.forEach(({ node }) => {
+    const { id, name, colorPrimary, colorSecondary, logoUrl } = node;
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <div style="display:flex; gap:12px; align-items:center;">
+        <img src="${safe(logoUrl)}" alt="" width="36" height="36" style="border-radius:8px; border:1px solid var(--border); background:#0b142a;" onerror="this.style.display='none'"/>
+        <div>
+          <div class="value">${safe(name)}</div>
+          <div class="muted mono">#${id}</div>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:8px;">
+          <span class="teamchip"><span class="teamcolors" style="background:${safe(colorPrimary)}"></span> ${safe(colorPrimary)}</span>
+          <span class="teamchip"><span class="teamcolors" style="background:${safe(colorSecondary)}"></span> ${safe(colorSecondary)}</span>
+        </div>
+      </div>
+    `;
+    frag.appendChild(el);
+  });
+  teamCardsEl.appendChild(frag);
+}
+
+function renderPlayers(edges) {
+  secPlayers.classList.remove("hidden");
+  const frag = document.createDocumentFragment();
+  edges.forEach(({ node }) => {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="value">${safe(node.nickname || node.name || "Unknown")}</div>
+      <div class="muted">Title: ${safe(node.title?.name || "—")}</div>
+      <div class="mono muted">ID: ${safe(node.id)}</div>
+    `;
+    frag.appendChild(el);
+  });
+  playerCardsEl.appendChild(frag);
+}
+
+function renderSeriesState(state) {
+  secSeriesState.classList.remove("hidden");
+  liveHeaderEl.textContent = `Valid: ${state.valid} • Started: ${state.started} • Finished: ${state.finished} • Format: ${state.format} • Updated: ${fmtUTC(state.updatedAt)}`;
+
+  const teamFrag = document.createDocumentFragment();
+  (state.teams || []).forEach(t => {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="value">${safe(t.name)}</div>
+      <div class="muted">Won series: ${t.won ? "Yes" : "No"}</div>
+    `;
+    teamFrag.appendChild(el);
+  });
+  liveTeamsEl.appendChild(teamFrag);
+
+  if (!state.games?.length) {
+    liveGamesEl.innerHTML = `<div class="muted" style="margin-top:8px;">No live games reported (empty array).</div>`;
+    return;
   }
 
-  // ------- UTIL (single namespace; never re-declare) -------
-  const UTIL = {
-    g(obj, path, dflt = undefined) {
-      try { return path.split(".").reduce((o,k)=>(o==null?o:o[k]), obj) ?? dflt; }
-      catch { return dflt; }
-    },
-    clamp(n, min, max){ return Math.max(min, Math.min(max, n)); },
-    fmtTime(iso) {
-      if (!iso) return "";
-      const d = new Date(iso);
-      const now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
-      return sameDay
-        ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        : d.toLocaleDateString([], { month: "short", day: "2-digit" });
-    },
-    fmtRel(iso) {
-      if (!iso) return "";
-      const d = new Date(iso).getTime();
-      const now = Date.now();
-      const diff = Math.round((d - now)/1000);
-      const abs = Math.abs(diff);
-      const unit = abs>=3600 ? "h" : abs>=60 ? "m" : "s";
-      const val = unit==="h" ? Math.round(abs/3600) : unit==="m" ? Math.round(abs/60) : abs;
-      const s = `${val}${unit}`;
-      return diff >= 0 ? `in ${s}` : `${s} ago`;
-    },
-    fmtBO(format) {
-      const s = (String(format?.nameShortened || format?.name || "")).toLowerCase();
-      if (!s) return "";
-      if (s.includes("bo1")) return "BO1";
-      if (s.includes("bo2")) return "BO2";
-      if (s.includes("bo3")) return "BO3";
-      if (s.includes("bo5")) return "BO5";
-      if (s.includes("bo7")) return "BO7";
-      if (s.includes("score-after")) return (format.nameShortened || s).toUpperCase();
-      return (format.name || format.nameShortened || "").toUpperCase();
-    },
-    pickTeamName(t) {
-      return (t?.baseInfo?.name || t?.name || "TBD").trim();
-    },
-    pickLogo(t) {
-      const raw = t?.baseInfo?.logoUrl || t?.logoUrl || "";
-      if (!raw) return "https://cdn.grid.gg/assets/team-logos/generic";
-      // many CDN items are id-only; if it already looks like a URL, keep it
-      if (/^https?:\/\//i.test(raw)) return raw;
-      return `https://cdn.grid.gg/assets/team-logos/${raw}`;
-    },
-    tournamentSafe(series) {
-      const tn = series?.tournament?.nameShortened || series?.tournament?.name || "";
-      const tl = series?.tournament?.logoUrl || "https://cdn.grid.gg/assets/tournament-logos/generic";
-      return { name: tn, logoUrl: tl };
-    },
-    clone(value) {
-      // simple, safe clone for our data (no functions/cycles)
-      try { return structuredClone(value); } catch { return JSON.parse(JSON.stringify(value)); }
-    }
+  const gamesFrag = document.createDocumentFragment();
+  state.games.forEach(g => {
+    const wrap = document.createElement("div");
+    wrap.className = "card";
+    const teamsHtml = (g.teams || []).map(tm => {
+      const players = (tm.players || []).map(p => {
+        return `<li class="mono small">${safe(p.name)} — K:${p.kills} D:${p.deaths} Net:${p.netWorth} $:${p.money} (${p.position?.x ?? "-"}, ${p.position?.y ?? "-"})</li>`;
+      }).join("");
+      return `
+        <div>
+          <div class="value">${safe(tm.name)}</div>
+          <ul>${players}</ul>
+        </div>
+      `;
+    }).join("");
+    wrap.innerHTML = `
+      <div class="label">Game</div>
+      <div class="value">Sequence #${g.sequenceNumber}</div>
+      <div style="margin-top:8px">${teamsHtml}</div>
+    `;
+    gamesFrag.appendChild(wrap);
+  });
+  liveGamesEl.appendChild(gamesFrag);
+}
+
+function renderStats(node) {
+  secStats.classList.remove("hidden");
+  // The object can be teamStatistics OR playerStatistics with same shape
+  statsCardsEl.appendChild(buildStatsCard(node));
+}
+
+function buildStatsCard(s) {
+  const wrap = document.createElement("div");
+  wrap.className = "card";
+
+  const win = summarizeWins(s?.game?.wins);
+  const rounds = (s?.segment || []).find(seg => seg.type === 'round');
+
+  wrap.innerHTML = `
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div>
+        <div class="label">Entity ID</div>
+        <div class="value">#${safe(s?.id) ?? "—"}</div>
+      </div>
+      <div class="badge">Record: ${win.wins}-${win.losses} • ${win.winrate}%</div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:12px;">
+      <div class="stat">
+        <div class="label">Series Played</div>
+        <div class="value">${s?.series?.count ?? 0}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Games Played</div>
+        <div class="value">${s?.game?.count ?? 0}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Kills / series (avg)</div>
+        <div class="value">${fmtNum(s?.series?.kills?.avg)}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Kills (min–max)</div>
+        <div class="value">${safe(s?.series?.kills?.min ?? 0)}–${safe(s?.series?.kills?.max ?? 0)}</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:12px;">
+      <div class="stat">
+        <div class="label">Rounds (last window)</div>
+        <div class="value">${safe(rounds?.count ?? 0)}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Deaths / round</div>
+        <div class="value">${fmtNum(rounds?.deaths?.avg)}</div>
+      </div>
+    </div>
+  `;
+  return wrap;
+}
+
+/* ---------- Helpers ---------- */
+
+function renderTeamChipsInline(teams) {
+  if (!Array.isArray(teams) || teams.length === 0) return "—";
+  return teams.map(t => {
+    const n = safe(t?.baseInfo?.name || "—");
+    const c1 = safe(t?.baseInfo?.colorPrimary || "#334155");
+    const c2 = safe(t?.baseInfo?.colorSecondary || "#0ea5e9");
+    return `<span class="teamchip"><span class="teamcolors" style="background:${c1}"></span><span class="teamcolors" style="background:${c2}"></span> ${n}</span>`;
+  }).join(" ");
+}
+
+function summarizeWins(winsArray) {
+  const win = winsArray?.find(w => w.value === true) || { count: 0, percentage: 0, streak: { current: 0, min: 0, max: 0 } };
+  const loss = winsArray?.find(w => w.value === false) || { count: 0 };
+  return {
+    wins: win.count,
+    losses: loss.count,
+    winrate: win.percentage ?? 0,
+    currentStreak: win.streak?.current ?? 0,
+    maxWinStreak: win.streak?.max ?? 0
   };
+}
 
-  // ------- Cache & request guard -------
-  const STATE = {
-    cache: null,            // last full normalized payload
-    cacheAt: 0,             // timestamp
-    inflight: null,         // in-flight promise to prevent duplicate pull
-    aborter: null           // AbortController
-  };
-
-  const ENDPOINTS = {
-    live:      `${API_BASE}/live?limit=${encodeURIComponent(LIMIT_LIVE)}`,
-    upcoming:  `${API_BASE}/upcoming?hours=${encodeURIComponent(UPC_HOURS)}&limit=${encodeURIComponent(LIMIT_UP)}`
-  };
-
-  // Normalizer: map API node -> lightweight match object used by UI
-  function normalizeSeriesNode(node) {
-    const tA = (node?.teams?.[0]) ?? null;
-    const tB = (node?.teams?.[1]) ?? null;
-    const seriesType = String(node?.type || "").toUpperCase();
-    const live = seriesType === "ESPORTS" || seriesType === "COMPETITIVE" || seriesType === "SCRIM" || !!node?.streams?.length; // fallback heuristic
-
-    return {
-      id: String(node?.id || ""),
-      time: node?.startTimeScheduled || null,
-      format: node?.format || null,
-      tournament: UTIL.tournamentSafe(node),
-      live,
-      teams: [
-        tA ? {
-          name: UTIL.pickTeamName(tA),
-          logo: UTIL.pickLogo(tA),
-          // show advantage only if > 0
-          advantage: Math.max(0, Number(tA?.scoreAdvantage || 0))
-        } : { name: "TBD", logo: UTIL.pickLogo(null), advantage: 0 },
-        tB ? {
-          name: UTIL.pickTeamName(tB),
-          logo: UTIL.pickLogo(tB),
-          advantage: Math.max(0, Number(tB?.scoreAdvantage || 0))
-        } : { name: "TBD", logo: UTIL.pickLogo(null), advantage: 0 }
-      ]
-    };
-  }
-
-  function normalizePayload(liveList, upList) {
-    const live = (liveList || []).map(normalizeSeriesNode);
-    const upcoming = (upList || []).map(normalizeSeriesNode)
-      .sort((a,b)=> new Date(a.time) - new Date(b.time));
-    return { live, upcoming };
-  }
-
-  // Single fetch per cycle with guard
-  async function fetchOnce() {
-    if (STATE.inflight) return STATE.inflight; // prevent duplicate pulls
-
-    // Allow re-use of a fresh cache if a render only is requested
-    STATE.aborter?.abort();
-    STATE.aborter = new AbortController();
-
-    STATE.inflight = (async () => {
-      try {
-        // NOTE: Replace these with your real GraphQL/REST calls as needed
-        // Here we assume two HTTP endpoints returning { data: [Series] } lists
-        const [a, b] = await Promise.all([
-          fetch(ENDPOINTS.live, { signal: STATE.aborter.signal }).then(r => r.json()),
-          fetch(ENDPOINTS.upcoming, { signal: STATE.aborter.signal }).then(r => r.json())
-        ]);
-
-        const liveData = a?.data || a?.live || [];
-        const upData   = b?.data || b?.upcoming || [];
-
-        const normalized = normalizePayload(liveData, upData);
-        STATE.cache = normalized;        // keep original (we’ll clone on use)
-        STATE.cacheAt = Date.now();
-
-        setLastUpdated(STATE.cacheAt);
-        return normalized;
-      } finally {
-        STATE.inflight = null;
+function buildNextQueryTemplate(kind, endCursor) {
+  const cursor = endCursor ? endCursor.replace(/"/g, '\\"') : "";
+  switch (kind) {
+    case "allSeries":
+      return `query GetAllSeriesInNext24Hours($after: Cursor) {
+  allSeries(
+    filter:{
+      startTimeScheduled:{
+        gte: "2024-04-24T15:00:07+02:00"
+        lte: "2024-04-25T15:00:07+02:00"
       }
-    })();
-
-    return STATE.inflight;
-  }
-
-  function setLastUpdated(ts) {
-    if (!LAST) return;
-    const d = new Date(ts);
-    LAST.textContent = `Last updated: ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-  }
-
-  // ------- Rendering -------
-  function renderAll(fromCacheOnly = false) {
-    // Pull a CLONE so we never mutate the original cache
-    let data = STATE.cache ? UTIL.clone(STATE.cache) : null;
-
-    const apply = (payload) => {
-      if (!payload) return;
-      renderList(LIST_LIVE, payload.live, "No live matches");
-      renderList(LIST_UP,   payload.upcoming, "No upcoming matches");
-    };
-
-    if (fromCacheOnly && data) {
-      apply(data);
-      return;
     }
-
-    fetchOnce().then(apply).catch(() => {
-      // keep UI as-is on failure, but update timestamp to show error state (optional)
-    });
+    orderBy: StartTimeScheduled
+    after: $after
+  ) {
+    totalCount
+    pageInfo { hasPreviousPage hasNextPage startCursor endCursor }
+    edges { cursor node { id title { nameShortened } tournament { nameShortened } startTimeScheduled format { nameShortened } teams { baseInfo { name } } } }
   }
-
-  function renderList(root, items, emptyText) {
-    if (!root) return;
-    root.innerHTML = "";
-
-    if (!items || items.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = emptyText;
-      root.appendChild(empty);
-      return;
-    }
-
-    const frag = document.createDocumentFragment();
-    items.forEach(m => frag.appendChild(card(m)));
-    root.appendChild(frag);
+}
+# Variables:
+{ "after": "${cursor}" }`;
+    case "teams":
+      return `query GetTeams($after: Cursor) {
+  teams(first: 5, after: $after) {
+    totalCount
+    pageInfo { hasPreviousPage hasNextPage startCursor endCursor }
+    edges { cursor node { id name colorPrimary colorSecondary logoUrl } }
   }
-
-  function card(m) {
-    const el = document.createElement("article");
-    el.className = "match-card";
-    el.tabIndex = 0;
-
-    // header
-    const head = document.createElement("div");
-    head.className = "match-head";
-
-    const title = document.createElement("div");
-    title.className = "match-title";
-    title.textContent = UTIL.g(m, "tournament.name", "—");
-
-    const pillWrap = document.createElement("div");
-    pillWrap.className = "match-pills";
-
-    const bo = UTIL.fmtBO(m.format);
-    if (bo) {
-      const b = document.createElement("span");
-      b.className = "pill";
-      b.textContent = bo;
-      pillWrap.appendChild(b);
-    }
-
-    const livePill = document.createElement("span");
-    livePill.className = m.live ? "pill live" : "pill";
-    livePill.textContent = m.live ? "LIVE" : "UPCOMING";
-    pillWrap.appendChild(livePill);
-
-    const when = document.createElement("span");
-    when.className = "pill soft";
-    const timeText = UTIL.fmtTime(m.time);
-    const relText  = UTIL.fmtRel(m.time);
-    when.textContent = timeText ? `${timeText}${relText ? " · " + relText : ""}` : (relText || "—");
-    pillWrap.appendChild(when);
-
-    head.appendChild(title);
-    head.appendChild(pillWrap);
-
-    // body
-    const body = document.createElement("div");
-    body.className = "match-body";
-
-    body.appendChild(teamRow(m.teams?.[0]));
-    body.appendChild(teamRow(m.teams?.[1]));
-
-    // collapse target
-    const collapse = document.createElement("div");
-    collapse.className = "collapse";
-    // (lazy) fill on open in modal; here we keep the card compact
-
-    el.appendChild(head);
-    el.appendChild(body);
-    el.appendChild(collapse);
-
-    // click -> open modal with details (use cache data)
-    el.addEventListener("click", () => openModal(m));
-    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") openModal(m); });
-
-    return el;
+}
+# Variables:
+{ "after": "${cursor}" }`;
+    default:
+      return `// Pagination template not available for "${kind}".`;
   }
+}
 
-  function teamRow(t) {
-    const row = document.createElement("div");
-    row.className = "team-row";
+function fmtUTC(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toISOString().replace(".000Z","Z");
+  } catch { return iso; }
+}
 
-    const left = document.createElement("div");
-    left.className = "team-left";
+function fmtNum(n) {
+  if (n == null || Number.isNaN(n)) return "0";
+  const v = typeof n === "number" ? n : Number(n);
+  return Number.isFinite(v) ? v.toFixed(3).replace(/\.?0+$/,"") : "0";
+}
 
-    const logo = document.createElement("img");
-    logo.className = "team-logo";
-    logo.alt = (t?.name || "Team") + " logo";
-    logo.loading = "lazy";
-    logo.decoding = "async";
-    logo.src = UTIL.pickLogo(t);
+function safe(v) {
+  if (v == null) return "";
+  return String(v);
+}
 
-    const name = document.createElement("div");
-    name.className = "team-name";
-    name.textContent = UTIL.pickTeamName(t);
+/* ---------- Samples (from your messages) ---------- */
 
-    left.appendChild(logo);
-    left.appendChild(name);
-
-    const right = document.createElement("div");
-    right.className = "team-right";
-
-    // Only show advantage badge if > 0
-    const adv = Number(t?.advantage || 0);
-    if (adv > 0) {
-      const b = document.createElement("span");
-      b.className = "pill soft";
-      b.textContent = `+${adv}`;
-      right.appendChild(b);
-    }
-
-    row.appendChild(left);
-    row.appendChild(right);
-    return row;
-  }
-
-  // ------- Modal -------
-  let activeModal = null;
-  let restoreFocusEl = null;
-
-  function openModal(m) {
-    closeModal();
-
-    const modal = document.createElement("div");
-    modal.className = "modal";
-    modal.role = "dialog";
-    modal.ariaModal = "true";
-
-    const sheet = document.createElement("div");
-    sheet.className = "modal-sheet";
-
-    const top = document.createElement("div");
-    top.className = "modal-top";
-
-    const h = document.createElement("h3");
-    h.textContent = UTIL.g(m, "tournament.name", "Match details");
-
-    const x = document.createElement("button");
-    x.className = "btn-close";
-    x.type = "button";
-    x.setAttribute("aria-label", "Close");
-    x.textContent = "×";
-    x.addEventListener("click", closeModal);
-
-    top.appendChild(h);
-    top.appendChild(x);
-
-    const info = document.createElement("div");
-    info.className = "modal-info";
-
-    info.appendChild(metaRow("When", `${UTIL.fmtTime(m.time)} (${UTIL.fmtRel(m.time)})`));
-    const bo = UTIL.fmtBO(m.format);
-    if (bo) info.appendChild(metaRow("Format", bo));
-    info.appendChild(metaRow("Tournament", UTIL.g(m, "tournament.name", "—")));
-
-    const teams = document.createElement("div");
-    teams.className = "modal-teams";
-    teams.appendChild(teamRow(m.teams?.[0]));
-    teams.appendChild(teamRow(m.teams?.[1]));
-
-    sheet.appendChild(top);
-    sheet.appendChild(info);
-    sheet.appendChild(teams);
-
-    modal.appendChild(sheet);
-    document.body.appendChild(modal);
-
-    activeModal = modal;
-    restoreFocusEl = document.activeElement;
-    document.addEventListener("keydown", onEscToClose);
-    x.focus();
-  }
-
-  function metaRow(k, v) {
-    const row = document.createElement("div");
-    row.className = "meta-row";
-    const key = document.createElement("div");
-    key.className = "meta-key";
-    key.textContent = k;
-    const val = document.createElement("div");
-    val.className = "meta-val";
-    val.textContent = v;
-    row.appendChild(key);
-    row.appendChild(val);
-    return row;
-  }
-
-  function onEscToClose(e) {
-    if (e.key === "Escape") closeModal();
-  }
-
-  function closeModal() {
-    if (!activeModal) return;
-    document.removeEventListener("keydown", onEscToClose);
-    activeModal.remove();
-    activeModal = null;
-    if (restoreFocusEl) {
-      restoreFocusEl.focus?.();
-      restoreFocusEl = null;
+const SAMPLE_ALL_SERIES_JSON = `{
+  "data": {
+    "allSeries": {
+      "totalCount": 20,
+      "pageInfo": {
+        "hasPreviousPage": false,
+        "hasNextPage": true,
+        "startCursor": "JAMWBQMj...",
+        "endCursor": "JAMWBQMj..."
+      },
+      "edges": [
+        {
+          "node": {
+            "id": "2658003",
+            "title": { "nameShortened": "cs2" },
+            "tournament": { "nameShortened": "YaLLa Compass Spring" },
+            "startTimeScheduled": "2024-04-24T13:45:00Z",
+            "format": { "name": "best-of-3", "nameShortened": "Bo3" },
+            "teams": [
+              { "baseInfo": { "name": "Passion UA" } },
+              { "baseInfo": { "name": "Permitta" } }
+            ]
+          }
+        }
+      ]
     }
   }
+}`;
 
-  // ------- Scheduler (single pull per tick) -------
-  let timer = null;
-  function schedule() {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      // fetch & render; no duplicate pulls thanks to guard
-      fetchOnce().then(() => renderAll(true)).finally(schedule);
-    }, refreshMs);
+const SAMPLE_TEAM_STATS_JSON = `{
+  "data": {
+    "teamStatistics": {
+      "id": "83",
+      "aggregationSeriesIds": ["2819031","2819028","2819025"],
+      "series": { "count": 9, "kills": { "sum": 2096, "min": 156, "max": 276, "avg": 232.88888888888889 } },
+      "game": {
+        "count": 25,
+        "wins": [
+          { "value": false, "count": 8, "percentage": 32, "streak": { "min": 1, "max": 2, "current": 0 } },
+          { "value": true, "count": 17, "percentage": 68, "streak": { "min": 1, "max": 4, "current": 1 } }
+        ]
+      },
+      "segment": [{ "type": "round", "count": 566, "deaths": { "sum": 1905, "min": 0, "max": 5, "avg": 3.3657243816254416 } }]
+    }
   }
-
-  // Initial paint
-  renderAll(false);
-  schedule();
-})();
+}`;
