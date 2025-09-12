@@ -1,4 +1,5 @@
 // app.js — teams + scores + jitter + logos
+// Version: 2.1 - Fixed syntax error
 (function () {
   // ---- DOM ----
   const ROOT            = document.getElementById("matchesRoot");
