@@ -12,7 +12,7 @@
   const UP_HOURS_SPAN   = document.getElementById("upHoursSpan");
 
   // ---- Config / URL params ----
-  const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
+  const API_BASE = ROOT.dataset.api || "https://api.grid.gg/graphql";
   const urlParams = new URLSearchParams(location.search);
 
   let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
@@ -46,14 +46,15 @@
   }
 
   // ---- Normalizer ----
-  function pullTeamFields(t) {
-    if (!t) return {};
-    const base = t.baseInfo || t; // API sometimes nests under baseInfo
+  function pullTeamFields(team) {
+    if (!team) return {};
+    const base = team.baseInfo || team; // API sometimes nests under baseInfo
     return {
       name: base?.name || "",
       logoUrl: base?.logoUrl || base?.logo || "",
       colorPrimary: base?.colorPrimary || "",
-      colorSecondary: base?.colorSecondary || ""
+      colorSecondary: base?.colorSecondary || "",
+      scoreAdvantage: team?.scoreAdvantage || 0
     };
   }
 
@@ -62,27 +63,28 @@
       const tA = pullTeamFields(it.teams?.[0]);
       const tB = pullTeamFields(it.teams?.[1]);
 
-      const bestOf =
-        it.bestOf ??
-        it.format?.bestOf ??
-        it.format?.nameShortened?.replace(/\D/g, "") || // "Bo3" -> "3"
-        it.format?.id ??
-        3;
+      const bestOf = it.format?.nameShortened?.replace(/\D/g, "") || // "Bo3" -> "3"
+                    it.format?.name?.replace(/\D/g, "") || 
+                    3;
 
-      const when = it.time || it.startTimeScheduled || it.startTime || "";
-      const eventName = it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
+      const when = it.startTimeScheduled || it.time || it.startTime || "";
+      const eventName = it.tournament?.nameShortened || it.tournament?.name || it.event?.name || it.tournamentName || "";
+      const gameTitle = it.title?.nameShortened || "";
 
-      // Scores (if your proxy exposes them for live)
+      // For now, we don't have live scores in this API structure
+      // but we can show score advantages
       let sA, sB;
-      if (it.scores && (it.scores.a != null || it.scores.b != null)) {
-        sA = it.scores.a;
-        sB = it.scores.b;
+      if (isLive) {
+        sA = tA.scoreAdvantage || 0;
+        sB = tB.scoreAdvantage || 0;
       }
 
       return {
         id: String(it.id ?? ""),
         teams: [tA, tB],
         event: eventName,
+        gameTitle: gameTitle,
+        tournamentLogo: it.tournament?.logoUrl || "",
         format: bestOf,
         time: when,
         scoreA: sA,
@@ -149,14 +151,20 @@
       : "";
 
     const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
+    const gamePill = m.gameTitle ? `<span class="pill game-pill">${escapeHtml(m.gameTitle.toUpperCase())}</span>` : "";
 
     const card = document.createElement("div");
     card.className = "card" + (m.live ? " live" : "");
     card.innerHTML = `
       <div class="card-top">
-        <span class="pill">BO${escapeHtml(m.format || "3")}</span>
-        ${livePill}
-        <span class="time">${escapeHtml(when)}</span>
+        <div class="card-top-left">
+          ${gamePill}
+          <span class="pill">BO${escapeHtml(m.format || "3")}</span>
+        </div>
+        <div class="card-top-right">
+          ${livePill}
+          <span class="time">${escapeHtml(when)}</span>
+        </div>
       </div>
       <div class="card-body">
         <div class="teams">
@@ -165,7 +173,10 @@
           ${right}
         </div>
         ${scoreHtml}
-        <div class="event">${escapeHtml(m.event || "")}</div>
+        <div class="event">
+          ${m.tournamentLogo ? `<img class="tournament-logo" src="${m.tournamentLogo}" alt="" onerror="this.style.display='none'">` : ""}
+          <span>${escapeHtml(m.event || "")}</span>
+        </div>
       </div>
     `;
     return card;
@@ -191,6 +202,50 @@
     });
   }
 
+  // ---- GraphQL Queries ----
+  const GRAPHQL_QUERY = `
+    query GetSeries($first: Int, $after: String) {
+      allSeries(first: $first, after: $after) {
+        totalCount
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
+          startCursor
+          endCursor
+        }
+        edges {
+          cursor
+          node {
+            id
+            title {
+              nameShortened
+            }
+            tournament {
+              id
+              name
+              nameShortened
+              logoUrl
+            }
+            startTimeScheduled
+            format {
+              name
+              nameShortened
+            }
+            teams {
+              baseInfo {
+                name
+                logoUrl
+                colorPrimary
+                colorSecondary
+              }
+              scoreAdvantage
+            }
+          }
+        }
+      }
+    }
+  `;
+
   // ---- Loader ----
   let inFlightCtrl;
   async function load() {
@@ -199,25 +254,63 @@
     inFlightCtrl = ctrl;
 
     try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
-      ]);
+      const response = await fetch(API_BASE, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: GRAPHQL_QUERY,
+          variables: {
+            first: 50, // Get more matches at once
+            after: null
+          }
+        }),
+        cache: "no-store",
+        signal: ctrl.signal
+      });
 
       if (ctrl.signal.aborted) return;
 
-      let live = normalize(liveRes.items || [], true);
-      let upcoming = normalize(upRes.items || [], false);
+      const result = await response.json();
+      
+      if (result.errors) {
+        console.error("GraphQL errors:", result.errors);
+        setLastUpdated("error");
+        return;
+      }
+
+      const allMatches = result.data.allSeries.edges.map(edge => edge.node);
+      
+      // Separate live and upcoming matches
+      const now = new Date();
+      const live = [];
+      const upcoming = [];
+      
+      allMatches.forEach(match => {
+        const matchTime = new Date(match.startTimeScheduled);
+        const timeDiff = matchTime - now;
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+        
+        if (hoursDiff <= 0 && hoursDiff >= -4) { // Live if started within last 4 hours
+          live.push(match);
+        } else if (hoursDiff > 0 && hoursDiff <= UPCOMING_HOURS) { // Upcoming within specified hours
+          upcoming.push(match);
+        }
+      });
+
+      let liveNormalized = normalize(live, true);
+      let upcomingNormalized = normalize(upcoming, false);
 
       // Sort
-      live.sort((a, b) => new Date(a.time) - new Date(b.time));
-      upcoming.sort((a, b) => new Date(a.time) - new Date(b.time));
+      liveNormalized.sort((a, b) => new Date(a.time) - new Date(b.time));
+      upcomingNormalized.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
-      if (LIMIT_UPCOMING > 0) upcoming = upcoming.slice(0, LIMIT_UPCOMING);
+      if (LIMIT_LIVE > 0) liveNormalized = liveNormalized.slice(0, LIMIT_LIVE);
+      if (LIMIT_UPCOMING > 0) upcomingNormalized = upcomingNormalized.slice(0, LIMIT_UPCOMING);
 
-      renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UPCOMING, upcoming, "No upcoming matches in the selected window.");
+      renderList(LIST_LIVE, liveNormalized, "No live matches right now.");
+      renderList(LIST_UPCOMING, upcomingNormalized, "No upcoming matches in the selected window.");
       setLastUpdated();
     } catch (err) {
       if (ctrl.signal.aborted) return;
