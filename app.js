@@ -1,5 +1,5 @@
 // app.js — teams + scores + jitter + logos
-// Version: 2.2 - Enhanced UI with click interactions and better data handling
+// Version: 2.3 - Fixed layout issues and improved team display
 (function () {
   // ---- DOM ----
   const ROOT            = document.getElementById("matchesRoot");
@@ -272,15 +272,15 @@
 
     const colorAttr = team?.colorPrimary ? ` data-color="${escapeHtml(team.colorPrimary)}"` : "";
 
-    if (team?.logoUrl) {
+    if (team?.logoUrl && team.logoUrl !== "") {
       const safe = String(team.logoUrl);
       img = `<img class="team-logo" loading="lazy" src="${safe}"
                  alt="${nm} logo"
-                 onerror="this.replaceWith(document.createElement('span')); this.previousSibling?.classList?.add('team-badge');">`;
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">`;
     }
 
     // Show image if present, otherwise badge with initials
-    const media = team?.logoUrl ? img : badge;
+    const media = (team?.logoUrl && team.logoUrl !== "") ? img : badge;
 
     return `
       <div class="team ${side}"${colorAttr}>
@@ -303,14 +303,14 @@
       : "";
 
     const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
-    const gamePill = m.gameTitle ? `<span class="pill game-pill">${escapeHtml(m.gameTitle.toUpperCase())}</span>` : "";
+    const tournamentPill = m.event ? `<span class="pill tournament-pill">${escapeHtml(m.event)}</span>` : "";
 
     const card = document.createElement("div");
     card.className = "card" + (m.live ? " live" : "");
     card.innerHTML = `
       <div class="card-top">
         <div class="card-top-left">
-          ${gamePill}
+          ${tournamentPill}
           <span class="pill format-pill hidden">BO${escapeHtml(m.format || "3")}</span>
         </div>
         <div class="card-top-right">
@@ -319,10 +319,14 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="teams">
-          ${left}
-          <div class="vs">vs</div>
-          ${right}
+        <div class="teams-vertical">
+          <div class="team-row">
+            ${left}
+          </div>
+          <div class="vs-row">VS</div>
+          <div class="team-row">
+            ${right}
+          </div>
         </div>
         ${scoreHtml}
         <div class="event">
@@ -359,6 +363,21 @@
 
     // Add click functionality
     card.addEventListener('click', function() {
+      // Close all other expanded cards first
+      const allCards = document.querySelectorAll('.card.expanded');
+      allCards.forEach(otherCard => {
+        if (otherCard !== card) {
+          otherCard.classList.remove('expanded');
+          const otherFormatPill = otherCard.querySelector('.format-pill');
+          const otherTimeSpan = otherCard.querySelector('.time');
+          const otherDetails = otherCard.querySelector('.card-details');
+          if (otherFormatPill) otherFormatPill.classList.add('hidden');
+          if (otherTimeSpan) otherTimeSpan.classList.add('hidden');
+          if (otherDetails) otherDetails.classList.add('hidden');
+        }
+      });
+
+      // Toggle current card
       card.classList.toggle('expanded');
       const formatPill = card.querySelector('.format-pill');
       const timeSpan = card.querySelector('.time');
