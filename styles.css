@@ -64,10 +64,11 @@ body{
 .card.live{border-color:var(--danger)}
 .card.expanded{
   transform:scale(1.05);
-  z-index:100;
-  position:relative;
+  z-index:1000;
+  position:absolute;
   box-shadow:0 8px 25px rgba(0,0,0,0.5);
   margin:10px;
+  width:calc(100% - 20px);
 }
 
 .card-top{
@@ -99,9 +100,9 @@ body{
 
 .card-body{display:flex;flex-direction:column;gap:8px}
 .teams{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700}
-.teams-vertical{display:flex;flex-direction:column;gap:4px;font-weight:700}
-.team-row{display:flex;align-items:center;justify-content:center;gap:8px}
-.vs-row{color:var(--muted);font-weight:600;text-align:center;font-size:12px;margin:2px 0}
+.teams-vertical{display:flex;flex-direction:column;gap:6px;font-weight:700}
+.team-row{display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:0 16px}
+.vs-row{color:var(--muted);font-weight:600;text-align:center;font-size:12px;margin:4px 0;padding:0 16px}
 .vs{color:var(--muted);font-weight:600}
 .score{
   align-self:center;
@@ -199,13 +200,14 @@ body{
 .team {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  justify-content: center;
+  justify-content: flex-start;
+  width: 100%;
 }
 
-.team.right { justify-content: center; }
-.team.right .team-name { text-align: center; }
+.team.right { justify-content: flex-start; }
+.team.right .team-name { text-align: left; }
 
 .team-logo {
   width: 28px;
