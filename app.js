@@ -48,6 +48,21 @@
   // ---- Normalizer ----
   function pullTeamFields(t) {
     if (!t) return {};
+    
+    // Handle both string team names and object team data
+    if (typeof t === 'string') {
+      // Generate a simple logo URL for known teams
+      const teamName = t.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const logoUrl = teamName.length > 0 ? `https://via.placeholder.com/28x28/4a5568/ffffff?text=${teamName.charAt(0).toUpperCase()}` : "";
+      
+      return {
+        name: t,
+        logoUrl: logoUrl,
+        colorPrimary: "",
+        colorSecondary: ""
+      };
+    }
+    
     const base = t.baseInfo || t; // API sometimes nests under baseInfo
     return {
       name: base?.name || "",
@@ -70,7 +85,7 @@
         3;
 
       const when = it.time || it.startTimeScheduled || it.startTime || "";
-      const eventName = it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
+      const eventName = it.event || it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
 
       // Scores (if your proxy exposes them for live)
       let sA, sB;
