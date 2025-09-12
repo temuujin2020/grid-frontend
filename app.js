@@ -72,6 +72,26 @@
     };
   }
 
+  function getGameType(teams) {
+    // Detect game type based on team names
+    const teamNames = teams.map(t => t.name || "").join(" ").toLowerCase();
+    
+    if (teamNames.includes("cs2") || teamNames.includes("cs-2") || teamNames.includes("counter-strike")) {
+      return "CS2";
+    }
+    if (teamNames.includes("dota") || teamNames.includes("dota-2")) {
+      return "DOTA2";
+    }
+    if (teamNames.includes("valorant") || teamNames.includes("val")) {
+      return "VALORANT";
+    }
+    if (teamNames.includes("lol") || teamNames.includes("league")) {
+      return "LOL";
+    }
+    
+    return "OTHER";
+  }
+
   function normalize(items, isLive) {
     return (items || []).map(it => {
       const tA = pullTeamFields(it.teams?.[0]);
@@ -94,6 +114,8 @@
         sB = it.scores.b;
       }
 
+      const gameType = getGameType([tA, tB]);
+
       return {
         id: String(it.id ?? ""),
         teams: [tA, tB],
@@ -102,7 +124,8 @@
         time: when,
         scoreA: sA,
         scoreB: sB,
-        live: !!isLive
+        live: !!isLive,
+        gameType: gameType
       };
     }).filter(x => x.id && x.time);
   }
@@ -164,13 +187,13 @@
       : "";
 
     const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
-    const tournamentPill = m.event ? `<span class="pill tournament-pill">${escapeHtml(m.event)}</span>` : "";
+    const gamePill = m.gameType ? `<span class="pill game-pill">${escapeHtml(m.gameType)}</span>` : "";
 
     const card = document.createElement("div");
     card.className = "card" + (m.live ? " live" : "");
     card.innerHTML = `
       <div class="card-top">
-        ${tournamentPill}
+        ${gamePill}
         <span class="pill format-pill">BO${escapeHtml(m.format || "3")}</span>
         ${livePill}
         <span class="time">${escapeHtml(when)}</span>
@@ -225,6 +248,10 @@
 
       let live = normalize(liveRes.items || [], true);
       let upcoming = normalize(upRes.items || [], false);
+
+      // Filter for CS2 and DOTA2 only
+      live = live.filter(m => m.gameType === "CS2" || m.gameType === "DOTA2");
+      upcoming = upcoming.filter(m => m.gameType === "CS2" || m.gameType === "DOTA2");
 
       // Sort
       live.sort((a, b) => new Date(a.time) - new Date(b.time));

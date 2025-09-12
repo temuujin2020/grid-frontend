@@ -77,6 +77,10 @@ body{
   background:#2d3748;border-color:#4a5568;color:#e2e8f0;font-weight:600;
   max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+.game-pill{
+  background:#1a365d;border-color:#2c5282;color:#90cdf4;font-weight:600;
+  font-size:11px;text-transform:uppercase;letter-spacing:0.5px;
+}
 .time{margin-left:auto;opacity:.9}
 
 .card-body{display:flex;flex-direction:column;gap:8px}
