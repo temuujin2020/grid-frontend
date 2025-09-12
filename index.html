@@ -2,58 +2,56 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Matches</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Esports — Live & Upcoming</title>
+
+  <!-- Basic SEO -->
+  <meta name="description" content="Live and upcoming esports matches with teams, scores, and match times." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="bar">
-    <h1>Matches</h1>
+  <header class="topbar">
+    <h1 class="title">Matches</h1>
     <div class="controls">
-      <label>Refresh:
-        <select id="refreshSel">
+      <label class="ctrl">
+        Refresh:
+        <select id="refreshSelect" class="select">
           <option value="15000">15s</option>
           <option value="30000">30s</option>
           <option value="60000" selected>60s</option>
           <option value="120000">120s</option>
         </select>
       </label>
-      <button id="refreshBtn" class="link">Refresh</button>
+      <span id="teamBadge" class="badge" hidden></span>
       <span id="lastUpdated" class="muted"></span>
     </div>
   </header>
 
-  <main class="wrap">
-    <section>
-      <h2>Live</h2>
-      <div id="liveList" class="cards"></div>
+  <!--
+    matchesRoot drives config via data- attributes.
+    - data-api: proxy base (no secrets). Default used by JS if not provided.
+    - data-refresh: default refresh ms (optional).
+  -->
+  <main
+    id="matchesRoot"
+    class="page"
+    data-api="https://grid-proxy.onrender.com/api/series"
+    data-refresh="15000"
+  >
+    <section class="block">
+      <h2 class="h">Live</h2>
+      <div id="listLive" class="grid" aria-live="polite"></div>
     </section>
 
-    <section class="upcoming-head">
-      <div class="row">
-        <h2>Upcoming <span class="muted">(next <span id="winLabel">12h</span>)</span></h2>
-        <div class="controls">
-          <label>Window:
-            <select id="winSel">
-              <option value="6">Next 6h</option>
-              <option value="12" selected>Next 12h</option>
-              <option value="24">Next 24h</option>
-            </select>
-          </label>
-          <button id="forceUpcoming" class="link">Refresh</button>
-        </div>
+    <section class="block">
+      <div class="block-head">
+        <h2 class="h">
+          Upcoming <span class="muted">(next <span id="upHoursSpan">24</span>h)</span>
+        </h2>
       </div>
-      <div id="upList" class="cards"></div>
+      <div id="listUpcoming" class="grid" aria-live="polite"></div>
     </section>
   </main>
-
-  <!-- Drawer -->
-  <aside id="drawer" class="drawer">
-    <div class="drawer-content">
-      <button id="drawerClose" class="close">×</button>
-      <div id="drawerBody"></div>
-    </div>
-  </aside>
 
   <script src="app.js"></script>
 </body>
