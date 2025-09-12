@@ -1,184 +1,210 @@
-(() => {
-  // ========= CONFIG =========
-  const API_ORIGIN = "https://grid-proxy.onrender.com"; // your Render URL
-  const ROUTE_PATTERNS = [
-    p => `${API_ORIGIN}${p}`,      // "/live", "/upcoming"
-    p => `${API_ORIGIN}/api${p}`,  // "/api/live"
-    p => `${API_ORIGIN}/v1${p}`,   // "/v1/live"
-  ];
+// app.js — clean working version with teams + scores + jitter
+(function () {
+  // ---- DOM ----
+  const ROOT            = document.getElementById("matchesRoot");
+  if (!ROOT) return;
 
-  const refreshSel = document.getElementById("refreshSel");
-  const refreshBtn = document.getElementById("refreshBtn");
-  const upWinSel   = document.getElementById("winSel");
-  const upRefresh  = document.getElementById("forceUpcoming");
-  const winLabel   = document.getElementById("winLabel");
-  const lastUpdatedEl = document.getElementById("lastUpdated");
+  const LIST_LIVE       = document.getElementById("listLive");
+  const LIST_UPCOMING   = document.getElementById("listUpcoming");
+  const LAST_UPDATED    = document.getElementById("lastUpdated");
+  const REFRESH_SELECT  = document.getElementById("refreshSelect");
+  const TEAM_BADGE      = document.getElementById("teamBadge");
+  const UP_HOURS_SPAN   = document.getElementById("upHoursSpan");
 
-  const LIST_LIVE = document.getElementById("liveList");
-  const LIST_UP   = document.getElementById("upList");
+  // ---- Config / URL params ----
+  const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
+  const urlParams = new URLSearchParams(location.search);
 
-  const DRAWER = document.getElementById("drawer");
-  const DRAWER_CLOSE = document.getElementById("drawerClose");
-  const DRAWER_BODY  = document.getElementById("drawerBody");
+  let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
+  const TEAM_PIN = (urlParams.get("team") || "").trim().toLowerCase();
+  const LIMIT_LIVE = Number(urlParams.get("limitLive") || 0);
+  const LIMIT_UPCOMING = Number(urlParams.get("limitUpcoming") || 0);
+  const UPCOMING_HOURS = Number(urlParams.get("hoursUpcoming") || 24);
 
-  let POLL_MS = parseInt(refreshSel.value, 10);
-  let UPCOMING_HOURS = parseInt(upWinSel.value, 10);
+  if (UP_HOURS_SPAN) UP_HOURS_SPAN.textContent = String(UPCOMING_HOURS);
 
-  // ========= HELPERS =========
-  function setLastUpdated() {
-    const s = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
-    lastUpdatedEl.textContent = `Last updated: ${s}`;
+  if (REFRESH_SELECT) {
+    const cur = String(refreshMs);
+    if ([...REFRESH_SELECT.options].some(o => o.value === cur)) {
+      REFRESH_SELECT.value = cur;
+    }
+    REFRESH_SELECT.addEventListener("change", () => {
+      refreshMs = Number(REFRESH_SELECT.value);
+      schedule();
+    });
   }
 
-  async function fetchJSONMulti(pathWithQuery, init={}) {
-    let lastErr;
-    for (const build of ROUTE_PATTERNS) {
-      const url = build(pathWithQuery);
-      try {
-        const res = await fetch(url, { cache:"no-store", ...init });
-        if (res.ok) return await res.json();
-        if (res.status !== 404) {
-          const txt = await res.text().catch(()=>"");
-          throw new Error(`HTTP ${res.status} ${url} ${txt? "- "+txt:""}`);
-        }
-        lastErr = new Error(`404 at ${url}`);
-      } catch (e) {
-        lastErr = e;
+  if (TEAM_PIN && TEAM_BADGE) {
+    TEAM_BADGE.hidden = false;
+    TEAM_BADGE.textContent = `Pinned: ${TEAM_PIN}`;
+  }
+
+  function setLastUpdated(note) {
+    if (!LAST_UPDATED) return;
+    const noteStr = note ? ` (${note})` : "";
+    LAST_UPDATED.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
+  }
+
+  // ---- Normalizer ----
+  function normalize(items, isLive) {
+    return (items || []).map(it => {
+      // Teams
+      let names = [];
+      if (Array.isArray(it.teams)) {
+        names = it.teams.map(t =>
+          typeof t === "string"
+            ? t
+            : (t?.name) || (t?.baseInfo?.name) || ""
+        ).filter(Boolean);
       }
-    }
-    throw lastErr || new Error("All API routes failed");
+
+      // Best-of
+      const bestOf =
+        it.bestOf ??
+        it.format?.bestOf ??
+        it.format?.id ??
+        (typeof it.format === "number" ? it.format : 3);
+
+      // Time
+      const when = it.time || it.startTimeScheduled || it.startTime || "";
+
+      // Event / tournament
+      const eventName = it.event?.name || it.tournament?.name || it.tournamentName || "";
+
+      // Scores
+      let sA, sB;
+      if (it.scores && (it.scores.a != null || it.scores.b != null)) {
+        sA = it.scores.a;
+        sB = it.scores.b;
+      }
+
+      return {
+        id: String(it.id ?? ""),
+        teams: names,
+        event: eventName,
+        format: bestOf,
+        time: when,
+        scoreA: sA,
+        scoreB: sB,
+        live: !!isLive
+      };
+    }).filter(x => x.id && x.time);
   }
 
-  function normalize(items, live=false) {
-    const out = [];
-    for (const it of items || []) {
-      const t = it.time || it.startTime || it.startTimeScheduled || null;
-      out.push({
-        id: it.id || it.seriesId || crypto.randomUUID(),
-        event: it.event || it.tournament || it.tournamentName || it.tournament?.nameShortened || "",
-        format: it.format?.nameShortened || it.formatShort || it.format || "",
-        teams: it.teams || it.teamNames || [
-          it.team1 || it.teamA || it.teams?.[0]?.baseInfo?.name || "TBD",
-          it.team2 || it.teamB || it.teams?.[1]?.baseInfo?.name || "TBD"
-        ],
-        scores: it.scores || it.score || ["", ""],
-        time: t,
-        live
-      });
-    }
-    return out;
-  }
+  // ---- Renderer ----
+  function renderCard(m) {
+    const left  = escapeHtml(m.teams?.[0] || "TBD");
+    const right = escapeHtml(m.teams?.[1] || "TBD");
 
-  function card(match) {
-    const a = document.createElement("article");
-    a.className = `card${match.live ? " live":""}`;
-    a.setAttribute("role","button");
-    a.tabIndex = 0;
+    const t = new Date(m.time);
+    const when = isNaN(t) ? "" : t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    const left = document.createElement("div");
-    left.className = "left";
-    const right = document.createElement("div");
-    right.className = "right";
+    const scoreHtml = (m.live && m.scoreA != null && m.scoreB != null)
+      ? `<div class="score">${m.scoreA}&nbsp;–&nbsp;${m.scoreB}</div>`
+      : "";
 
-    left.innerHTML = `
-      <div class="row event">${match.event || "—"} ${match.format ? "• "+match.format : ""}</div>
-      <div class="row">
-        <div class="team">${(match.teams?.[0] ?? "TBD")}</div>
-        <div class="score">${(match.scores?.[0] ?? "")}</div>
+    const livePill = m.live ? `<span class="pill live-dot">LIVE</span>` : "";
+
+    const card = document.createElement("div");
+    card.className = "card" + (m.live ? " live" : "");
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="pill">BO${escapeHtml(m.format || "3")}</span>
+        ${livePill}
+        <span class="time">${escapeHtml(when)}</span>
       </div>
-      <div class="row">
-        <div class="team">${(match.teams?.[1] ?? "TBD")}</div>
-        <div class="score">${(match.scores?.[1] ?? "")}</div>
+      <div class="card-body">
+        <div class="teams">
+          <div>${left}</div>
+          <div class="vs">vs</div>
+          <div>${right}</div>
+        </div>
+        ${scoreHtml}
+        <div class="event">${escapeHtml(m.event || "")}</div>
       </div>
     `;
-
-    const status = match.live ? "LIVE" :
-      (match.time ? new Date(match.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "");
-    right.innerHTML = `<div class="status">${status}</div>`;
-
-    a.appendChild(left);
-    a.appendChild(right);
-
-    a.addEventListener("click", () => openDrawer(match));
-    a.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(match); } });
-
-    return a;
+    return card;
   }
 
-  function renderList(el, items, emptyMsg) {
-    el.innerHTML = "";
-    if (!items?.length) {
-      el.innerHTML = `<div class="empty">${emptyMsg}</div>`;
-      return;
+  function renderList(root, items, emptyText) {
+    if (!root) return;
+    const frag = document.createDocumentFragment();
+
+    if (!items || items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = emptyText;
+      frag.appendChild(empty);
+    } else {
+      for (const m of items) frag.appendChild(renderCard(m));
     }
-    for (const m of items) el.appendChild(card(m));
+
+    root.classList.add("updating");
+    requestAnimationFrame(() => {
+      root.replaceChildren(frag);
+      root.classList.remove("updating");
+    });
   }
 
-  function openDrawer(m) {
-    DRAWER_BODY.innerHTML = `
-      <h2>${m.event || "Match"}</h2>
-      <div class="kv"><div class="k">Status</div><div>${m.live ? "LIVE" : "Scheduled"}</div></div>
-      <div class="kv"><div class="k">Format</div><div>${m.format || "—"}</div></div>
-      <div class="kv"><div class="k">When</div><div>${m.time ? new Date(m.time).toLocaleString() : "—"}</div></div>
-      <hr style="border:0;border-top:1px solid var(--border);margin:10px 0;">
-      <div class="kv"><div class="k">Team A</div><div>${m.teams?.[0] ?? "TBD"} ${m.scores?.[0] ?? ""}</div></div>
-      <div class="kv"><div class="k">Team B</div><div>${m.teams?.[1] ?? "TBD"} ${m.scores?.[1] ?? ""}</div></div>
-      <p class="muted" style="margin-top:12px">More details (rosters, live maps) can be added once those API fields are available in the proxy.</p>
-    `;
-    DRAWER.classList.add("open");
-  }
-  function closeDrawer(){ DRAWER.classList.remove("open"); }
-  DRAWER_CLOSE.addEventListener("click", closeDrawer);
-  DRAWER.addEventListener("click", (e)=>{ if(e.target===DRAWER) closeDrawer(); });
-
-  // ========= LOAD =========
+  // ---- Loader ----
+  let inFlightCtrl;
   async function load() {
+    if (inFlightCtrl) inFlightCtrl.abort();
+    const ctrl = new AbortController();
+    inFlightCtrl = ctrl;
+
     try {
       const [liveRes, upRes] = await Promise.all([
-        fetchJSONMulti(`/live`),
-        fetchJSONMulti(`/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`)
+        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
+        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
       ]);
 
-      let live = normalize(liveRes.items || liveRes.data || [], true);
-      let up   = normalize(upRes.items || upRes.data || [], false);
+      if (ctrl.signal.aborted) return;
 
-      // sort by soonest
-      const byTime = (a,b) => new Date(a.time||0) - new Date(b.time||0);
-      live.sort(byTime);
-      up.sort(byTime);
+      let live = normalize(liveRes.items || [], true);
+      let upcoming = normalize(upRes.items || [], false);
+
+      // Sort
+      live.sort((a, b) => new Date(a.time) - new Date(b.time));
+      upcoming.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+      if (LIMIT_LIVE > 0) live = live.slice(0, LIMIT_LIVE);
+      if (LIMIT_UPCOMING > 0) upcoming = upcoming.slice(0, LIMIT_UPCOMING);
 
       renderList(LIST_LIVE, live, "No live matches right now.");
-      renderList(LIST_UP, up, "Nothing scheduled in this window.");
-
+      renderList(LIST_UPCOMING, upcoming, "No upcoming matches in the selected window.");
       setLastUpdated();
-    } catch (e) {
-      console.error(e);
-      LIST_LIVE.innerHTML = `<div class="empty">Couldn’t load matches.</div>`;
-      LIST_UP.innerHTML   = `<div class="empty">Couldn’t load matches.</div>`;
+    } catch (err) {
+      if (ctrl.signal.aborted) return;
+      console.error("[load] error:", err);
+      setLastUpdated("error");
     }
   }
 
-  // ========= POLLING =========
-  let timer;
-  function startPolling(){
-    if (timer) clearInterval(timer);
-    timer = setInterval(load, POLL_MS);
+  // ---- Scheduler ----
+  function nextInterval() {
+    const floor = 8000;
+    const jitter = Math.floor(Math.random() * 500);
+    return Math.max(floor, refreshMs) + jitter;
   }
 
-  refreshSel.addEventListener("change", () => {
-    POLL_MS = parseInt(refreshSel.value,10);
-    startPolling();
-  });
-  refreshBtn.addEventListener("click", load);
-
-  upWinSel.addEventListener("change", () => {
-    UPCOMING_HOURS = parseInt(upWinSel.value,10);
-    winLabel.textContent = `${UPCOMING_HOURS}h`;
+  let timer;
+  function schedule() {
+    if (timer) clearTimeout(timer);
     load();
-  });
-  upRefresh.addEventListener("click", load);
+    timer = setTimeout(schedule, nextInterval());
+  }
 
-  // kick it off
-  load();
-  startPolling();
+  // ---- Utils ----
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // ---- Start ----
+  schedule();
 })();
