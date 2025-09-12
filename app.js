@@ -1,5 +1,5 @@
 // app.js — teams + scores + jitter + logos
-// Version: 2.1 - Fixed syntax error
+// Version: 2.2 - Enhanced UI with click interactions and better data handling
 (function () {
   // ---- DOM ----
   const ROOT            = document.getElementById("matchesRoot");
@@ -14,7 +14,7 @@
 
   // ---- Config / URL params ----
   const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
-  const GRAPHQL_API = ROOT.dataset.graphqlApi || "https://grid-proxy.onrender.com/graphql"; // Your authenticated GraphQL endpoint
+  const GRAPHQL_API = ROOT.dataset.graphqlApi || "https://api.grid.gg/graphql"; // Try direct API first
   const urlParams = new URLSearchParams(location.search);
 
   let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
@@ -184,13 +184,20 @@
   function pullTeamFields(t) {
     if (!t) return {};
     const base = t.baseInfo || t; // API sometimes nests under baseInfo
-    const teamName = base?.name || "";
+    let teamName = base?.name || "";
+    
+    // Handle different team data structures
+    if (typeof t === 'string') {
+      teamName = t;
+    } else if (Array.isArray(t)) {
+      teamName = t[0] || "";
+    }
     
     // Try to get enhanced data from GraphQL cache
     const cachedTeam = teamCache.get(teamName.toLowerCase());
     
     return {
-      name: teamName,
+      name: teamName || "TBD",
       logoUrl: cachedTeam?.logoUrl || base?.logoUrl || base?.logo || "",
       colorPrimary: cachedTeam?.colorPrimary || base?.colorPrimary || "",
       colorSecondary: cachedTeam?.colorSecondary || base?.colorSecondary || ""
@@ -211,7 +218,7 @@
 
       const when = it.time || it.startTimeScheduled || it.startTime || "";
       const eventName = it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
-      const gameTitle = it.title?.nameShortened || "ESPORT";
+      const gameTitle = it.title?.nameShortened || eventName || "ESPORT";
 
       // Scores (if your proxy exposes them for live)
       let sA, sB;
@@ -304,11 +311,11 @@
       <div class="card-top">
         <div class="card-top-left">
           ${gamePill}
-          <span class="pill">BO${escapeHtml(m.format || "3")}</span>
+          <span class="pill format-pill hidden">BO${escapeHtml(m.format || "3")}</span>
         </div>
         <div class="card-top-right">
           ${livePill}
-          <span class="time">${escapeHtml(when)}</span>
+          <span class="time hidden">${escapeHtml(when)}</span>
         </div>
       </div>
       <div class="card-body">
@@ -322,8 +329,52 @@
           ${m.tournamentLogo ? `<img class="tournament-logo" src="${m.tournamentLogo}" alt="" onerror="this.style.display='none'">` : ""}
           <span>${escapeHtml(m.event || "")}</span>
         </div>
+        <div class="card-details hidden">
+          <div class="detail-section">
+            <h4>Match Details</h4>
+            <p><strong>Format:</strong> Best of ${m.format || "3"}</p>
+            <p><strong>Started at:</strong> ${escapeHtml(when)}</p>
+            <p><strong>Tournament:</strong> ${escapeHtml(m.event || "")}</p>
+          </div>
+          <div class="detail-section">
+            <h4>Teams</h4>
+            <div class="team-details">
+              <div class="team-detail">
+                <strong>${escapeHtml(m.teams?.[0]?.name || "TBD")}</strong>
+                <span class="team-color" style="background-color: ${m.teams?.[0]?.colorPrimary || '#666'}"></span>
+              </div>
+              <div class="team-detail">
+                <strong>${escapeHtml(m.teams?.[1]?.name || "TBD")}</strong>
+                <span class="team-color" style="background-color: ${m.teams?.[1]?.colorPrimary || '#666'}"></span>
+              </div>
+            </div>
+          </div>
+          <div class="detail-section">
+            <h4>Stream Links</h4>
+            <p>Stream links will be available here</p>
+          </div>
+        </div>
       </div>
     `;
+
+    // Add click functionality
+    card.addEventListener('click', function() {
+      card.classList.toggle('expanded');
+      const formatPill = card.querySelector('.format-pill');
+      const timeSpan = card.querySelector('.time');
+      const details = card.querySelector('.card-details');
+      
+      if (card.classList.contains('expanded')) {
+        formatPill.classList.remove('hidden');
+        timeSpan.classList.remove('hidden');
+        details.classList.remove('hidden');
+      } else {
+        formatPill.classList.add('hidden');
+        timeSpan.classList.add('hidden');
+        details.classList.add('hidden');
+      }
+    });
+
     return card;
   }
 
