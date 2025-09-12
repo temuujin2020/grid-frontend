@@ -98,3 +98,67 @@ body{
   .teams{flex-direction:column;gap:4px;text-align:center}
   .time{display:none}
 }
+
+
+/* --- logos & team rows --- */
+.card .teams {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.team.right { justify-content: flex-end; }
+.team.right .team-name { text-align: right; }
+
+.team-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #0b0c0f;
+  border: 1px solid rgba(255,255,255,.08);
+  flex: 0 0 auto;
+}
+
+.team-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: #fff;
+  background: #343a40;
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.team-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card .vs {
+  opacity: .7;
+  font-weight: 700;
+}
+
+/* optional: color the left/right names using team colors when present */
+.team[data-color] .team-name {
+  text-shadow: 0 0 6px rgba(255,255,255,.06);
+}

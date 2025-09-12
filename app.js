@@ -1,4 +1,4 @@
-// app.js — clean working version with teams + scores + jitter
+// app.js — teams + scores + jitter + logos
 (function () {
   // ---- DOM ----
   const ROOT            = document.getElementById("matchesRoot");
@@ -46,32 +46,33 @@
   }
 
   // ---- Normalizer ----
+  function pullTeamFields(t) {
+    if (!t) return {};
+    const base = t.baseInfo || t; // API sometimes nests under baseInfo
+    return {
+      name: base?.name || "",
+      logoUrl: base?.logoUrl || base?.logo || "",
+      colorPrimary: base?.colorPrimary || "",
+      colorSecondary: base?.colorSecondary || ""
+    };
+  }
+
   function normalize(items, isLive) {
     return (items || []).map(it => {
-      // Teams
-      let names = [];
-      if (Array.isArray(it.teams)) {
-        names = it.teams.map(t =>
-          typeof t === "string"
-            ? t
-            : (t?.name) || (t?.baseInfo?.name) || ""
-        ).filter(Boolean);
-      }
+      const tA = pullTeamFields(it.teams?.[0]);
+      const tB = pullTeamFields(it.teams?.[1]);
 
-      // Best-of
       const bestOf =
         it.bestOf ??
         it.format?.bestOf ??
+        it.format?.nameShortened?.replace(/\D/g, "") || // "Bo3" -> "3"
         it.format?.id ??
-        (typeof it.format === "number" ? it.format : 3);
+        3;
 
-      // Time
       const when = it.time || it.startTimeScheduled || it.startTime || "";
+      const eventName = it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
 
-      // Event / tournament
-      const eventName = it.event?.name || it.tournament?.name || it.tournamentName || "";
-
-      // Scores
+      // Scores (if your proxy exposes them for live)
       let sA, sB;
       if (it.scores && (it.scores.a != null || it.scores.b != null)) {
         sA = it.scores.a;
@@ -80,7 +81,7 @@
 
       return {
         id: String(it.id ?? ""),
-        teams: names,
+        teams: [tA, tB],
         event: eventName,
         format: bestOf,
         time: when,
@@ -91,10 +92,54 @@
     }).filter(x => x.id && x.time);
   }
 
+  // ---- Renderer helpers ----
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function initials(name) {
+    const n = (name || "").trim();
+    if (!n) return "?";
+    const parts = n.split(/\s+/);
+    const first = parts[0]?.[0] || "";
+    const last  = parts.length > 1 ? parts[parts.length - 1][0] : "";
+    return (first + last).toUpperCase();
+  }
+
+  function teamBlock(team, side) {
+    const nm = escapeHtml(team?.name || "TBD");
+    const badge = `<span class="team-badge" aria-hidden="true">${initials(nm)}</span>`;
+    let img = "";
+
+    const colorAttr = team?.colorPrimary ? ` data-color="${escapeHtml(team.colorPrimary)}"` : "";
+
+    if (team?.logoUrl) {
+      const safe = String(team.logoUrl);
+      img = `<img class="team-logo" loading="lazy" src="${safe}"
+                 alt="${nm} logo"
+                 onerror="this.replaceWith(document.createElement('span')); this.previousSibling?.classList?.add('team-badge');">`;
+    }
+
+    // Show image if present, otherwise badge with initials
+    const media = team?.logoUrl ? img : badge;
+
+    return `
+      <div class="team ${side}"${colorAttr}>
+        ${media}
+        <span class="team-name">${nm}</span>
+      </div>
+    `;
+  }
+
   // ---- Renderer ----
   function renderCard(m) {
-    const left  = escapeHtml(m.teams?.[0] || "TBD");
-    const right = escapeHtml(m.teams?.[1] || "TBD");
+    const left  = teamBlock(m.teams?.[0], "left");
+    const right = teamBlock(m.teams?.[1], "right");
 
     const t = new Date(m.time);
     const when = isNaN(t) ? "" : t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -115,9 +160,9 @@
       </div>
       <div class="card-body">
         <div class="teams">
-          <div>${left}</div>
+          ${left}
           <div class="vs">vs</div>
-          <div>${right}</div>
+          ${right}
         </div>
         ${scoreHtml}
         <div class="event">${escapeHtml(m.event || "")}</div>
@@ -193,16 +238,6 @@
     if (timer) clearTimeout(timer);
     load();
     timer = setTimeout(schedule, nextInterval());
-  }
-
-  // ---- Utils ----
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
   }
 
   // ---- Start ----
