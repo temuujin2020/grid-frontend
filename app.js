@@ -1,209 +1,184 @@
 (() => {
-  // =======================
-  // CONFIG — adjust for your proxy
-  // =======================
-  const API_BASE = "https://grid-proxy.onrender.com"; // your Render proxy base (no trailing slash)
-  const LIVE_PATH = "/api/live";
-  const UPC_PATH  = "/api/upcoming"; // ?hours=<N>
-  const MATCH_PATH = "/api/match";   // /:id (optional; only if your proxy supports it)
+  // ========= CONFIG =========
+  const API_ORIGIN = "https://grid-proxy.onrender.com"; // your Render URL
+  const ROUTE_PATTERNS = [
+    p => `${API_ORIGIN}${p}`,      // "/live", "/upcoming"
+    p => `${API_ORIGIN}/api${p}`,  // "/api/live"
+    p => `${API_ORIGIN}/v1${p}`,   // "/v1/live"
+  ];
 
-  // UI elements
-  const LIST_LIVE = document.getElementById("live");
-  const LIST_UP   = document.getElementById("upcoming");
-  const REFRESH_SEL = document.getElementById("refreshSel");
-  const WIN_SEL     = document.getElementById("winSel");
-  const BTN_REF     = document.getElementById("btnRefresh");
-  const BTN_REF_UP  = document.getElementById("btnRefreshUp");
-  const LAST        = document.getElementById("lastUpdated");
-  const LAST_UP     = document.getElementById("lastUpdatedUp");
+  const refreshSel = document.getElementById("refreshSel");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const upWinSel   = document.getElementById("winSel");
+  const upRefresh  = document.getElementById("forceUpcoming");
+  const winLabel   = document.getElementById("winLabel");
+  const lastUpdatedEl = document.getElementById("lastUpdated");
 
-  // Modal (optional)
-  const dlg = document.getElementById("details");
-  const dlgBody = document.getElementById("detailsBody");
-  const closeBtn = document.getElementById("closeDetails");
-  closeBtn?.addEventListener("click", () => dlg.close());
+  const LIST_LIVE = document.getElementById("liveList");
+  const LIST_UP   = document.getElementById("upList");
 
-  // =======================
-  // Helpers
-  // =======================
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  const DRAWER = document.getElementById("drawer");
+  const DRAWER_CLOSE = document.getElementById("drawerClose");
+  const DRAWER_BODY  = document.getElementById("drawerBody");
 
-  function fmtTime(iso) {
-    try {
-      return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } catch { return ""; }
-  }
-  function setStamp(el) {
-    el.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  let POLL_MS = parseInt(refreshSel.value, 10);
+  let UPCOMING_HOURS = parseInt(upWinSel.value, 10);
+
+  // ========= HELPERS =========
+  function setLastUpdated() {
+    const s = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    lastUpdatedEl.textContent = `Last updated: ${s}`;
   }
 
-  function cardHtml(m, live) {
-    return `
-      <a href="#" class="card ${live ? "live" : ""}" data-id="${m.id}">
-        <div class="row event">
-          <div>${m.event || "—"} ${m.format ? `• ${m.format}` : ""}</div>
-          <div class="${live ? "status" : "time"}">${live ? "LIVE" : (m.localTime || "")}</div>
-        </div>
-        <div class="row">
-          <div class="team">${m.teams?.[0] || "TBD"}</div>
-          <div class="score">${m.scores?.[0] ?? ""}</div>
-        </div>
-        <div class="row">
-          <div class="team">${m.teams?.[1] || "TBD"}</div>
-          <div class="score">${m.scores?.[1] ?? ""}</div>
-        </div>
-      </a>
-    `;
-  }
-
-  function bindCardClicks(container) {
-    container.addEventListener("click", async (e) => {
-      const a = e.target.closest("a.card");
-      if (!a) return;
-      e.preventDefault();
-      const id = a.getAttribute("data-id");
-      if (!id) return;
-
-      // Optional fetch — if your proxy has /api/match/:id
+  async function fetchJSONMulti(pathWithQuery, init={}) {
+    let lastErr;
+    for (const build of ROUTE_PATTERNS) {
+      const url = build(pathWithQuery);
       try {
-        const res = await fetch(`${API_BASE}${MATCH_PATH}/${encodeURIComponent(id)}`, { cache: "no-store" });
-        if (!res.ok) throw new Error("match fetch failed");
-        const data = await res.json();
-        showDetails(data);
-      } catch {
-        // fallback to a minimal detail view using the card text
-        showDetailsFromCard(a);
+        const res = await fetch(url, { cache:"no-store", ...init });
+        if (res.ok) return await res.json();
+        if (res.status !== 404) {
+          const txt = await res.text().catch(()=>"");
+          throw new Error(`HTTP ${res.status} ${url} ${txt? "- "+txt:""}`);
+        }
+        lastErr = new Error(`404 at ${url}`);
+      } catch (e) {
+        lastErr = e;
       }
-    });
+    }
+    throw lastErr || new Error("All API routes failed");
   }
 
-  function showDetails(data) {
-    const teams = data.teams || [];
-    const scores = data.scores || [];
-    const status = data.live ? "LIVE" : (data.time ? fmtTime(data.time) : "");
-    dlgBody.innerHTML = `
-      <h3>${data.event || "Match"} <span class="badge">${data.format || ""}</span></h3>
-      <p class="dim small">${status}</p>
-      <div class="grid">
-        <div class="card">
-          <div class="row"><strong>${teams[0] || "TBD"}</strong><span>${scores[0] ?? ""}</span></div>
-        </div>
-        <div class="card">
-          <div class="row"><strong>${teams[1] || "TBD"}</strong><span>${scores[1] ?? ""}</span></div>
-        </div>
+  function normalize(items, live=false) {
+    const out = [];
+    for (const it of items || []) {
+      const t = it.time || it.startTime || it.startTimeScheduled || null;
+      out.push({
+        id: it.id || it.seriesId || crypto.randomUUID(),
+        event: it.event || it.tournament || it.tournamentName || it.tournament?.nameShortened || "",
+        format: it.format?.nameShortened || it.formatShort || it.format || "",
+        teams: it.teams || it.teamNames || [
+          it.team1 || it.teamA || it.teams?.[0]?.baseInfo?.name || "TBD",
+          it.team2 || it.teamB || it.teams?.[1]?.baseInfo?.name || "TBD"
+        ],
+        scores: it.scores || it.score || ["", ""],
+        time: t,
+        live
+      });
+    }
+    return out;
+  }
+
+  function card(match) {
+    const a = document.createElement("article");
+    a.className = `card${match.live ? " live":""}`;
+    a.setAttribute("role","button");
+    a.tabIndex = 0;
+
+    const left = document.createElement("div");
+    left.className = "left";
+    const right = document.createElement("div");
+    right.className = "right";
+
+    left.innerHTML = `
+      <div class="row event">${match.event || "—"} ${match.format ? "• "+match.format : ""}</div>
+      <div class="row">
+        <div class="team">${(match.teams?.[0] ?? "TBD")}</div>
+        <div class="score">${(match.scores?.[0] ?? "")}</div>
       </div>
-      ${Array.isArray(data.players) ? `
-        <h4>Players</h4>
-        <div class="grid">
-          ${data.players.map(p => `
-            <div class="card">
-              <div class="row"><strong>${p.nickname || p.name || "Player"}</strong><span class="dim small">${p.title || ""}</span></div>
-            </div>
-          `).join("")}
-        </div>` : ""}
-    `;
-    dlg.showModal();
-  }
-
-  function showDetailsFromCard(a) {
-    const rows = [...a.querySelectorAll(".row")].map(r => r.textContent.trim());
-    dlgBody.innerHTML = `
-      <h3>${rows[0] || "Match"}</h3>
-      <div class="grid">
-        <div class="card"><div>${rows[1] || ""}</div></div>
-        <div class="card"><div>${rows[2] || ""}</div></div>
+      <div class="row">
+        <div class="team">${(match.teams?.[1] ?? "TBD")}</div>
+        <div class="score">${(match.scores?.[1] ?? "")}</div>
       </div>
     `;
-    dlg.showModal();
+
+    const status = match.live ? "LIVE" :
+      (match.time ? new Date(match.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "");
+    right.innerHTML = `<div class="status">${status}</div>`;
+
+    a.appendChild(left);
+    a.appendChild(right);
+
+    a.addEventListener("click", () => openDrawer(match));
+    a.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(match); } });
+
+    return a;
   }
 
-  function renderList(el, items, live = false) {
+  function renderList(el, items, emptyMsg) {
+    el.innerHTML = "";
     if (!items?.length) {
-      el.innerHTML = `<div class="empty">${live ? "No live matches right now." : "Nothing scheduled in this window."}</div>`;
+      el.innerHTML = `<div class="empty">${emptyMsg}</div>`;
       return;
     }
-    el.innerHTML = items.map(m => cardHtml(m, live)).join("");
+    for (const m of items) el.appendChild(card(m));
   }
 
-  function normalize(items, live = false) {
-    return (items || []).map(x => ({
-      id: String(x.id ?? ""),
-      event: x.event ?? x.tournament ?? "",
-      format: x.formatShort || x.format || "",
-      teams: x.teams || [],
-      scores: x.scores || ["", ""],
-      live,
-      time: x.time || x.start || "",
-      localTime: x.time ? fmtTime(x.time) : (x.start ? fmtTime(x.start) : "")
-    }));
+  function openDrawer(m) {
+    DRAWER_BODY.innerHTML = `
+      <h2>${m.event || "Match"}</h2>
+      <div class="kv"><div class="k">Status</div><div>${m.live ? "LIVE" : "Scheduled"}</div></div>
+      <div class="kv"><div class="k">Format</div><div>${m.format || "—"}</div></div>
+      <div class="kv"><div class="k">When</div><div>${m.time ? new Date(m.time).toLocaleString() : "—"}</div></div>
+      <hr style="border:0;border-top:1px solid var(--border);margin:10px 0;">
+      <div class="kv"><div class="k">Team A</div><div>${m.teams?.[0] ?? "TBD"} ${m.scores?.[0] ?? ""}</div></div>
+      <div class="kv"><div class="k">Team B</div><div>${m.teams?.[1] ?? "TBD"} ${m.scores?.[1] ?? ""}</div></div>
+      <p class="muted" style="margin-top:12px">More details (rosters, live maps) can be added once those API fields are available in the proxy.</p>
+    `;
+    DRAWER.classList.add("open");
   }
+  function closeDrawer(){ DRAWER.classList.remove("open"); }
+  DRAWER_CLOSE.addEventListener("click", closeDrawer);
+  DRAWER.addEventListener("click", (e)=>{ if(e.target===DRAWER) closeDrawer(); });
 
-  // =======================
-  // Fetch + rate-limit backoff
-  // =======================
-  let baseInterval = Number(REFRESH_SEL.value) || 30;
-  let backoff = 0; // steps: 0..3
-
-  async function fetchJson(url) {
-    const res = await fetch(url, { cache: "no-store" });
-    if (res.status === 429) {
-      // Too many requests: step backoff up to 3 (x2, x4, x8)
-      backoff = Math.min(backoff + 1, 3);
-      throw new Error("rate_limited");
-    }
-    backoff = 0; // reset on success / non-429
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  }
-
-  async function loadLive() {
-    const data = await fetchJson(`${API_BASE}${LIVE_PATH}`);
-    // expected shape: { items: [ { id, event, format, teams, scores, time } ] }
-    const list = normalize(data.items, true);
-    renderList(LIST_LIVE, list, true);
-    setStamp(LAST);
-  }
-
-  async function loadUpcoming() {
-    const hours = Number(WIN_SEL.value) || 24;
-    const data = await fetchJson(`${API_BASE}${UPC_PATH}?hours=${encodeURIComponent(hours)}`);
-    const list = normalize(data.items, false);
-    // sort by time
-    list.sort((a,b) => new Date(a.time) - new Date(b.time));
-    renderList(LIST_UP, list, false);
-    setStamp(LAST_UP);
-  }
-
-  async function loadAll() {
+  // ========= LOAD =========
+  async function load() {
     try {
-      await Promise.allSettled([loadLive(), loadUpcoming()]);
-    } catch {
-      // already handled per-call
+      const [liveRes, upRes] = await Promise.all([
+        fetchJSONMulti(`/live`),
+        fetchJSONMulti(`/upcoming?hours=${encodeURIComponent(UPCOMING_HOURS)}`)
+      ]);
+
+      let live = normalize(liveRes.items || liveRes.data || [], true);
+      let up   = normalize(upRes.items || upRes.data || [], false);
+
+      // sort by soonest
+      const byTime = (a,b) => new Date(a.time||0) - new Date(b.time||0);
+      live.sort(byTime);
+      up.sort(byTime);
+
+      renderList(LIST_LIVE, live, "No live matches right now.");
+      renderList(LIST_UP, up, "Nothing scheduled in this window.");
+
+      setLastUpdated();
+    } catch (e) {
+      console.error(e);
+      LIST_LIVE.innerHTML = `<div class="empty">Couldn’t load matches.</div>`;
+      LIST_UP.innerHTML   = `<div class="empty">Couldn’t load matches.</div>`;
     }
   }
 
-  // =======================
-  // Scheduler
-  // =======================
+  // ========= POLLING =========
   let timer;
-  function schedule() {
+  function startPolling(){
     if (timer) clearInterval(timer);
-    const interval = clamp(baseInterval * (2 ** backoff), 10, 300); // 10s..5m
-    timer = setInterval(loadAll, interval * 1000);
+    timer = setInterval(load, POLL_MS);
   }
 
-  // Initial load + wire up UI
-  loadAll().finally(schedule);
-
-  REFRESH_SEL.addEventListener("change", () => {
-    baseInterval = Number(REFRESH_SEL.value) || 30;
-    schedule();
+  refreshSel.addEventListener("change", () => {
+    POLL_MS = parseInt(refreshSel.value,10);
+    startPolling();
   });
-  WIN_SEL.addEventListener("change", () => loadUpcoming());
-  BTN_REF.addEventListener("click", () => loadLive());
-  BTN_REF_UP.addEventListener("click", () => loadUpcoming());
+  refreshBtn.addEventListener("click", load);
 
-  // Click handlers for cards (details)
-  bindCardClicks(LIST_LIVE);
-  bindCardClicks(LIST_UP);
+  upWinSel.addEventListener("change", () => {
+    UPCOMING_HOURS = parseInt(upWinSel.value,10);
+    winLabel.textContent = `${UPCOMING_HOURS}h`;
+    load();
+  });
+  upRefresh.addEventListener("click", load);
+
+  // kick it off
+  load();
+  startPolling();
 })();
