@@ -65,6 +65,12 @@ body{
   display:flex;align-items:center;gap:8px;justify-content:space-between;
   font-size:12px;color:var(--muted)
 }
+.card-top-left{
+  display:flex;align-items:center;gap:6px;
+}
+.card-top-right{
+  display:flex;align-items:center;gap:6px;
+}
 .pill{
   display:inline-flex;align-items:center;gap:6px;
   padding:2px 8px;border:1px solid var(--border);border-radius:999px;
@@ -72,6 +78,9 @@ body{
 }
 .live-dot{
   background:#3a0f12;border-color:#4a1217;color:#fff;font-weight:700;
+}
+.game-pill{
+  background:#1a1f2e;border-color:#2d3748;color:#a0aec0;font-weight:600;
 }
 .time{margin-left:auto;opacity:.9}
 
@@ -83,7 +92,15 @@ body{
   font-size:18px;font-weight:800;
   padding:2px 8px;border-radius:8px;background:#0e1726;border:1px solid var(--border)
 }
-.event{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event{
+  color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:flex;align-items:center;gap:6px;
+}
+.tournament-logo{
+  width:16px;height:16px;border-radius:3px;object-fit:contain;
+  background:#0b0c0f;border:1px solid rgba(255,255,255,.08);
+  flex:0 0 auto;
+}
 
 .empty{
   border:1px dashed var(--border);
