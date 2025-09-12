@@ -13,6 +13,7 @@
 
   // ---- Config / URL params ----
   const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
+  const GRAPHQL_API = ROOT.dataset.graphqlApi || "https://grid-proxy.onrender.com/graphql"; // Your authenticated GraphQL endpoint
   const urlParams = new URLSearchParams(location.search);
 
   let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
@@ -45,15 +46,153 @@
     LAST_UPDATED.textContent = "Last updated: " + new Date().toLocaleTimeString() + noteStr;
   }
 
+  // ---- API Detection ----
+  let useGraphQL = false;
+  let teamCache = new Map();
+
+  async function testGraphQLAPI() {
+    try {
+      const response = await fetch(GRAPHQL_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `query { teams(first: 1) { edges { node { id name } } } }`
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.data && result.data.teams) {
+          console.log("GraphQL API is available through Render.com");
+          return true;
+        }
+      }
+    } catch (err) {
+      console.log("GraphQL API not available, using REST API");
+    }
+    return false;
+  }
+
+  async function loadTeamsData() {
+    if (!useGraphQL) return;
+    
+    try {
+      const response = await fetch(GRAPHQL_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `query GetTeams {
+            teams(first: 100) {
+              edges {
+                node {
+                  id
+                  name
+                  colorPrimary
+                  colorSecondary
+                  logoUrl
+                }
+              }
+            }
+          }`
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.data && result.data.teams) {
+          result.data.teams.edges.forEach(edge => {
+            const team = edge.node;
+            teamCache.set(team.name.toLowerCase(), team);
+          });
+          console.log(`Loaded ${teamCache.size} teams from GraphQL API`);
+        }
+      }
+    } catch (err) {
+      console.log("Failed to load teams data from GraphQL API");
+    }
+  }
+
+  async function loadGraphQLMatches() {
+    try {
+      const response = await fetch(GRAPHQL_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `query GetSeries {
+            allSeries(first: 50) {
+              totalCount
+              pageInfo {
+                hasNextPage
+                hasPreviousPage
+                startCursor
+                endCursor
+              }
+              edges {
+                cursor
+                node {
+                  id
+                  title {
+                    nameShortened
+                  }
+                  tournament {
+                    id
+                    name
+                    nameShortened
+                    logoUrl
+                  }
+                  startTimeScheduled
+                  format {
+                    name
+                    nameShortened
+                  }
+                  teams {
+                    baseInfo {
+                      name
+                      logoUrl
+                      colorPrimary
+                      colorSecondary
+                    }
+                    scoreAdvantage
+                  }
+                }
+              }
+            }
+          }`
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.data && result.data.allSeries) {
+          return result.data.allSeries.edges.map(edge => edge.node);
+        }
+      }
+    } catch (err) {
+      console.log("Failed to load matches from GraphQL API");
+    }
+    return [];
+  }
+
   // ---- Normalizer ----
   function pullTeamFields(t) {
     if (!t) return {};
     const base = t.baseInfo || t; // API sometimes nests under baseInfo
+    const teamName = base?.name || "";
+    
+    // Try to get enhanced data from GraphQL cache
+    const cachedTeam = teamCache.get(teamName.toLowerCase());
+    
     return {
-      name: base?.name || "",
-      logoUrl: base?.logoUrl || base?.logo || "",
-      colorPrimary: base?.colorPrimary || "",
-      colorSecondary: base?.colorSecondary || ""
+      name: teamName,
+      logoUrl: cachedTeam?.logoUrl || base?.logoUrl || base?.logo || "",
+      colorPrimary: cachedTeam?.colorPrimary || base?.colorPrimary || "",
+      colorSecondary: cachedTeam?.colorSecondary || base?.colorSecondary || ""
     };
   }
 
@@ -71,19 +210,24 @@
 
       const when = it.time || it.startTimeScheduled || it.startTime || "";
       const eventName = it.event?.name || it.tournament?.nameShortened || it.tournament?.name || it.tournamentName || "";
+      const gameTitle = it.title?.nameShortened || "ESPORT";
 
       // Scores (if your proxy exposes them for live)
       let sA, sB;
       if (it.scores && (it.scores.a != null || it.scores.b != null)) {
         sA = it.scores.a;
         sB = it.scores.b;
+      } else if (isLive && it.teams?.[0]?.scoreAdvantage != null && it.teams?.[1]?.scoreAdvantage != null) {
+        // Use score advantages from GraphQL if available
+        sA = it.teams[0].scoreAdvantage;
+        sB = it.teams[1].scoreAdvantage;
       }
 
       return {
         id: String(it.id ?? ""),
         teams: [tA, tB],
         event: eventName,
-        gameTitle: "ESPORT", // Default game title since original API doesn't have this
+        gameTitle: gameTitle,
         tournamentLogo: it.tournament?.logoUrl || "",
         format: bestOf,
         time: when,
@@ -210,15 +354,43 @@
     inFlightCtrl = ctrl;
 
     try {
-      const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
-      ]);
+      let live, upcoming;
 
-      if (ctrl.signal.aborted) return;
+      if (useGraphQL) {
+        // Use GraphQL API
+        const allMatches = await loadGraphQLMatches();
+        
+        // Separate live and upcoming matches
+        const now = new Date();
+        const liveMatches = [];
+        const upcomingMatches = [];
+        
+        allMatches.forEach(match => {
+          const matchTime = new Date(match.startTimeScheduled);
+          const timeDiff = matchTime - now;
+          const hoursDiff = timeDiff / (1000 * 60 * 60);
+          
+          if (hoursDiff <= 0 && hoursDiff >= -4) { // Live if started within last 4 hours
+            liveMatches.push(match);
+          } else if (hoursDiff > 0 && hoursDiff <= UPCOMING_HOURS) { // Upcoming within specified hours
+            upcomingMatches.push(match);
+          }
+        });
 
-      let live = normalize(liveRes.items || [], true);
-      let upcoming = normalize(upRes.items || [], false);
+        live = normalize(liveMatches, true);
+        upcoming = normalize(upcomingMatches, false);
+      } else {
+        // Use REST API
+        const [liveRes, upRes] = await Promise.all([
+          fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
+          fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
+        ]);
+
+        if (ctrl.signal.aborted) return;
+
+        live = normalize(liveRes.items || [], true);
+        upcoming = normalize(upRes.items || [], false);
+      }
 
       // Sort
       live.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -252,5 +424,18 @@
   }
 
   // ---- Start ----
-  schedule();
+  async function initialize() {
+    // Test GraphQL API availability
+    useGraphQL = await testGraphQLAPI();
+    
+    if (useGraphQL) {
+      // Load teams data for enhanced team information
+      await loadTeamsData();
+    }
+    
+    // Start the main loading cycle
+    schedule();
+  }
+  
+  initialize();
 })();
