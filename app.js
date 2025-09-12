@@ -204,7 +204,7 @@
       const bestOf =
         it.bestOf ??
         it.format?.bestOf ??
-        it.format?.nameShortened?.replace(/\D/g, "") || // "Bo3" -> "3"
+        it.format?.nameShortened?.replace(/\D/g, "") ??
         it.format?.id ??
         3;
 
