@@ -27,14 +27,85 @@
   // Team cache for storing real team data
   const teamCache = new Map();
 
+  // Known team data with real logos
+  const knownTeams = {
+    '1win': {
+      name: '1WIN',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/1win-logo',
+      colorPrimary: '#ff0000',
+      colorSecondary: '#ffffff'
+    },
+    'bestia': {
+      name: 'Bestia',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/bestia-logo',
+      colorPrimary: '#8b5cf6',
+      colorSecondary: '#ffffff'
+    },
+    'fluxo': {
+      name: 'Fluxo',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/fluxo-logo',
+      colorPrimary: '#00d4aa',
+      colorSecondary: '#ffffff'
+    },
+    'players': {
+      name: 'Players',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/players-logo',
+      colorPrimary: '#3b82f6',
+      colorSecondary: '#ffffff'
+    },
+    'y5': {
+      name: 'Y5',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/y5-logo',
+      colorPrimary: '#f59e0b',
+      colorSecondary: '#000000'
+    },
+    'largadosypelados': {
+      name: 'largadosypelados',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/largadosypelados-logo',
+      colorPrimary: '#10b981',
+      colorSecondary: '#ffffff'
+    },
+    'sprout': {
+      name: 'Sprout',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/4a99a16c029eba9db3169ec2b83e284e',
+      colorPrimary: '#34bc6e',
+      colorSecondary: '#726180'
+    },
+    'navi': {
+      name: 'NAVI',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/navi-logo',
+      colorPrimary: '#ffd700',
+      colorSecondary: '#000000'
+    },
+    'g2': {
+      name: 'G2 Esports',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/g2-logo',
+      colorPrimary: '#000000',
+      colorSecondary: '#ffffff'
+    },
+    'faze': {
+      name: 'FaZe Clan',
+      logoUrl: 'https://cdn.grid.gg/assets/team-logos/faze-logo',
+      colorPrimary: '#000000',
+      colorSecondary: '#ffffff'
+    }
+  };
+
   // ---- Team Data Functions ----
-  async function fetchTeamData(teamName) {
+  function getTeamData(teamName) {
     if (teamCache.has(teamName)) {
       return teamCache.get(teamName);
     }
 
-    // For now, skip GraphQL API calls due to 404 errors
-    // Return null to use fallback logos
+    // Check if we have known team data
+    const normalizedName = teamName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const knownTeam = knownTeams[normalizedName];
+    
+    if (knownTeam) {
+      teamCache.set(teamName, knownTeam);
+      return knownTeam;
+    }
+
     return null;
   }
 
@@ -61,7 +132,7 @@
   }
 
   // ---- Normalizer ----
-  async function pullTeamFields(t) {
+  function pullTeamFields(t) {
     if (!t) return {};
     
     // Handle both string team names and object team data
@@ -77,8 +148,8 @@
       // Keep real team names as they are
       else if (t.length > 3 && !t.includes('-')) displayName = t;
       
-      // Try to fetch real team data from GraphQL API
-      const realTeamData = await fetchTeamData(displayName);
+      // Try to get real team data from known teams
+      const realTeamData = getTeamData(displayName);
       
       if (realTeamData) {
         return {
@@ -89,7 +160,7 @@
         };
       }
       
-      // Generate better-looking team logos
+      // Generate better-looking team logos as fallback
       const teamName = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const firstLetter = teamName.charAt(0).toUpperCase();
       const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
@@ -136,12 +207,10 @@
     return "CS2";
   }
 
-  async function normalize(items, isLive) {
-    const normalizedItems = [];
-    
-    for (const it of (items || [])) {
-      const tA = await pullTeamFields(it.teams?.[0]);
-      const tB = await pullTeamFields(it.teams?.[1]);
+  function normalize(items, isLive) {
+    return (items || []).map(it => {
+      const tA = pullTeamFields(it.teams?.[0]);
+      const tB = pullTeamFields(it.teams?.[1]);
 
       const bestOf =
         it.bestOf ??
@@ -162,7 +231,7 @@
 
       const gameType = getGameType([tA, tB]);
 
-      normalizedItems.push({
+      return {
         id: String(it.id ?? ""),
         teams: [tA, tB],
         event: eventName,
@@ -172,10 +241,8 @@
         scoreB: sB,
         live: !!isLive,
         gameType: gameType
-      });
-    }
-    
-    return normalizedItems.filter(x => x.id && x.time);
+      };
+    }).filter(x => x.id && x.time);
   }
 
   // ---- Renderer helpers ----
@@ -302,8 +369,8 @@
 
       if (ctrl.signal.aborted) return;
 
-      let live = await normalize(liveRes.items || [], true);
-      let upcoming = await normalize(upRes.items || [], false);
+      let live = normalize(liveRes.items || [], true);
+      let upcoming = normalize(upRes.items || [], false);
 
       // Filter for CS2 and DOTA2 only
       live = live.filter(m => m.gameType === "CS2" || m.gameType === "DOTA2");
