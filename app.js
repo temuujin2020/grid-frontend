@@ -51,12 +51,21 @@
     
     // Handle both string team names and object team data
     if (typeof t === 'string') {
+      // Convert generic test names to more readable format
+      let displayName = t;
+      if (t.includes('CS2-1')) displayName = 'Team Alpha';
+      else if (t.includes('CS2-2')) displayName = 'Team Beta';
+      else if (t.includes('DOTA-1')) displayName = 'Dragon Squad';
+      else if (t.includes('DOTA-2')) displayName = 'Phoenix Rising';
+      else if (t.includes('TBD-1')) displayName = 'Team TBD';
+      else if (t.includes('TBD-2')) displayName = 'Team TBD';
+      
       // Generate a simple logo URL for known teams
-      const teamName = t.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const logoUrl = teamName.length > 0 ? `https://via.placeholder.com/28x28/4a5568/ffffff?text=${teamName.charAt(0).toUpperCase()}` : "";
+      const teamName = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const logoUrl = teamName.length > 0 ? `data:image/svg+xml;base64,${btoa(`<svg width="28" height="28" xmlns="http://www.w3.org/2000/svg"><rect width="28" height="28" fill="#4a5568" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-family="Arial" font-size="12" font-weight="bold">${teamName.charAt(0).toUpperCase()}</text></svg>`)}` : "";
       
       return {
-        name: t,
+        name: displayName,
         logoUrl: logoUrl,
         colorPrimary: "",
         colorSecondary: ""
@@ -160,11 +169,11 @@
       const safe = String(team.logoUrl);
       img = `<img class="team-logo" loading="lazy" src="${safe}"
                  alt="${nm} logo"
-                 onerror="this.replaceWith(document.createElement('span')); this.previousSibling?.classList?.add('team-badge');">`;
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">`;
     }
 
     // Show image if present, otherwise badge with initials
-    const media = team?.logoUrl ? img : badge;
+    const media = team?.logoUrl ? img + badge : badge;
 
     return `
       <div class="team ${side}"${colorAttr}>

@@ -118,7 +118,7 @@ body{
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  display: inline-flex;
+  display: none; /* Hidden by default, shown when logo fails */
   align-items: center;
   justify-content: center;
   font-weight: 700;
