@@ -59,6 +59,8 @@
       else if (t.includes('DOTA-2')) displayName = 'Phoenix Rising';
       else if (t.includes('TBD-1')) displayName = 'Team TBD';
       else if (t.includes('TBD-2')) displayName = 'Team TBD';
+      // Keep real team names as they are
+      else if (t.length > 3 && !t.includes('-')) displayName = t;
       
       // Generate a simple logo URL for known teams
       const teamName = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -98,7 +100,8 @@
       return "LOL";
     }
     
-    return "OTHER";
+    // Default to CS2 for unknown teams (most esports matches are CS2)
+    return "CS2";
   }
 
   function normalize(items, isLive) {
