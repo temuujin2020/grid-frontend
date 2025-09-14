@@ -1,0 +1,231 @@
+:root {
+  --bg: #0b0f14;
+  --panel: #0f141d;
+  --panel2: #0b111a;
+  --text: #dbe8ff;
+  --muted: #8491a8;
+  --border: #1d2a3d;
+  --accent: #3b82f6;
+  --danger: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.app {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* Top */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to bottom, #0d131c, #0b0f14);
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Layout */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.block {
+  margin-bottom: 22px;
+}
+
+.h {
+  margin: 0 0 10px 0;
+  font-size: 18px;
+}
+
+/* Lists */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+/* Card */
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--panel2));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 92px;
+}
+
+.card.live {
+  border-color: var(--danger);
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #0e1622;
+  color: var(--text);
+}
+
+.live-dot {
+  background: #3a0f12;
+  border-color: #4a1217;
+  color: #fff;
+  font-weight: 700;
+}
+
+.time {
+  margin-left: auto;
+  opacity: 0.9;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teams {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.vs {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.event {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--panel2);
+  text-align: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+/* Team logos and badges */
+.team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.team.right {
+  justify-content: flex-end;
+}
+
+.team.right .team-name {
+  text-align: right;
+}
+
+.team-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #0b0c0f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+
+.team-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: none; /* Hidden by default, shown when logo fails */
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #fff;
+  background: #343a40;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.team-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Small screens tweaks */
+@media (max-width: 420px) {
+  .teams {
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+  }
+  .time {
+    display: none;
+  }
+}
