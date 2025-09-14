@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload CS2 Team Logos</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0f141d;
+      --text: #dbe8ff;
+      --muted: #8491a8;
+      --border: #1d2a3d;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: var(--text);
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .upload-area:hover {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .upload-area.dragover {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.2);
+    }
+
+    .button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    .button:hover {
+      background: #2563eb;
+    }
+
+    .button.success {
+      background: var(--success);
+    }
+
+    .button.error {
+      background: var(--error);
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+
+    .status.success {
+      background: var(--success);
+      color: white;
+    }
+
+    .status.error {
+      background: var(--error);
+      color: white;
+    }
+
+    .status.warning {
+      background: var(--warning);
+      color: white;
+    }
+
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .logo-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .logo-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      object-fit: contain;
+      background: #0b0c0f;
+      border: 1px solid var(--border);
+      margin: 0 auto 8px;
+      display: block;
+    }
+
+    .team-name {
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 5px;
+    }
+
+    .file-info {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .instructions {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .instructions h3 {
+      margin-top: 0;
+      color: var(--success);
+    }
+
+    .instructions ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+
+    .instructions li {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Upload CS2 Team Logos</h1>
+    
+    <div class="instructions">
+      <h3>📋 Instructions:</h3>
+      <ol>
+        <li><strong>Select all your logo files</strong> (PNG format recommended)</li>
+        <li><strong>Keep original team names</strong> with spaces (e.g., "FaZe Clan.png")</li>
+        <li><strong>Click "Process Logos"</strong> to generate team data</li>
+        <li><strong>Copy the generated code</strong> to update your React app</li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <h3>Upload Logos</h3>
+      <div class="upload-area" id="uploadArea">
+        <p>📁 <strong>Click here or drag & drop</strong> your CS2 team logo files</p>
+        <p style="color: var(--muted); font-size: 12px;">Supports PNG, JPG, SVG formats</p>
+        <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+      </div>
+      <div id="uploadStatus"></div>
+    </div>
+
+    <div class="section">
+      <h3>Uploaded Logos</h3>
+      <button onclick="processLogos()" class="button">Process Logos</button>
+      <button onclick="clearLogos()" class="button">Clear All</button>
+      <div id="logoGrid" class="logo-grid"></div>
+    </div>
+
+    <div class="section">
+      <h3>Generated Team Data</h3>
+      <button onclick="copyCode()" class="button success">Copy Code</button>
+      <pre id="generatedCode" style="background: var(--bg); padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 400px; overflow-y: auto;"></pre>
+    </div>
+  </div>
+
+  <script>
+    let uploadedFiles = [];
+
+    // File upload handling
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const logoGrid = document.getElementById('logoGrid');
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('dragover', handleDragOver);
+    uploadArea.addEventListener('dragleave', handleDragLeave);
+    uploadArea.addEventListener('drop', handleDrop);
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    }
+
+    function handleDragLeave(e) {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const files = Array.from(e.dataTransfer.files);
+      processFiles(files);
+    }
+
+    function handleFileSelect(e) {
+      const files = Array.from(e.target.files);
+      processFiles(files);
+    }
+
+    function processFiles(files) {
+      const imageFiles = files.filter(file => file.type.startsWith('image/'));
+      
+      if (imageFiles.length === 0) {
+        uploadStatus.innerHTML = '<div class="status error">Please select image files only</div>';
+        return;
+      }
+
+      uploadedFiles = [...uploadedFiles, ...imageFiles];
+      displayLogos();
+      
+      uploadStatus.innerHTML = `<div class="status success">Uploaded ${imageFiles.length} logo files (${uploadedFiles.length} total)</div>`;
+    }
+
+    function displayLogos() {
+      logoGrid.innerHTML = '';
+      
+      uploadedFiles.forEach((file, index) => {
+        const card = document.createElement('div');
+        card.className = 'logo-card';
+        
+        const img = document.createElement('img');
+        img.className = 'logo-img';
+        img.src = URL.createObjectURL(file);
+        img.alt = file.name;
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'team-name';
+        nameDiv.textContent = file.name.replace(/\.[^/.]+$/, '');
+        
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'file-info';
+        infoDiv.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+        
+        card.appendChild(img);
+        card.appendChild(nameDiv);
+        card.appendChild(infoDiv);
+        
+        logoGrid.appendChild(card);
+      });
+    }
+
+    function processLogos() {
+      if (uploadedFiles.length === 0) {
+        uploadStatus.innerHTML = '<div class="status error">No files uploaded</div>';
+        return;
+      }
+
+      let teamData = {};
+      
+      uploadedFiles.forEach(file => {
+        const teamName = file.name.replace(/\.[^/.]+$/, '');
+        const normalizedKey = teamName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        
+        // Convert to base64 for embedding
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          teamData[normalizedKey] = {
+            name: teamName,
+            logoUrl: e.target.result,
+            colorPrimary: '#3b82f6',
+            colorSecondary: '#ffffff',
+            source: 'uploaded'
+          };
+          
+          // Update display when all files are processed
+          if (Object.keys(teamData).length === uploadedFiles.length) {
+            generateCode(teamData);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function generateCode(teamData) {
+      let code = '// Generated team data from uploaded logos\n';
+      code += 'const knownTeams = {\n';
+      
+      Object.entries(teamData).forEach(([key, team]) => {
+        code += `  '${key}': {\n`;
+        code += `    name: '${team.name}',\n`;
+        code += `    logoUrl: '${team.logoUrl}',\n`;
+        code += `    colorPrimary: '${team.colorPrimary}',\n`;
+        code += `    colorSecondary: '${team.colorSecondary}',\n`;
+        code += `    source: 'uploaded'\n`;
+        code += `  },\n`;
+      });
+      
+      code += '};\n';
+      
+      document.getElementById('generatedCode').textContent = code;
+      uploadStatus.innerHTML = `<div class="status success">Generated team data for ${Object.keys(teamData).length} teams!</div>`;
+    }
+
+    function copyCode() {
+      const code = document.getElementById('generatedCode').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('Code copied to clipboard!');
+      });
+    }
+
+    function clearLogos() {
+      uploadedFiles = [];
+      logoGrid.innerHTML = '';
+      document.getElementById('generatedCode').textContent = '';
+      uploadStatus.innerHTML = '';
+    }
+  </script>
+</body>
+</html>

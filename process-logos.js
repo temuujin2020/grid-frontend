@@ -7,6 +7,9 @@ function filenameToTeamName(filename) {
   // Remove .png extension
   const name = filename.replace('.png', '');
   
+  // Handle spaces and special characters in filenames
+  const normalizedName = name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  
   // Convert to proper case and handle special cases
   const teamNames = {
     '1win': '1WIN',
@@ -14,23 +17,49 @@ function filenameToTeamName(filename) {
     'astralis': 'Astralis',
     'bestia': 'Bestia',
     'cloud9': 'Cloud9',
+    'faze clan': 'FaZe Clan',
     'faze': 'FaZe Clan',
     'fluxo': 'Fluxo',
     'fnatic': 'Fnatic',
+    'g2 esports': 'G2 Esports',
     'g2': 'G2 Esports',
+    'team liquid': 'Team Liquid',
     'liquid': 'Team Liquid',
     'navi': 'NAVI',
+    'ninjas in pyjamas': 'Ninjas in Pyjamas',
     'nip': 'Ninjas in Pyjamas',
     'players': 'Players',
+    'red reserve': 'Red Reserve',
     'red-reserve': 'Red Reserve',
     'sprout': 'Sprout',
+    'team vitality': 'Team Vitality',
     'vitality': 'Team Vitality',
     'windigo': 'Windigo',
     'x6tence': 'x6tence',
-    'y5': 'Y5'
+    'y5': 'Y5',
+    // Add more common team name variations
+    'mouz': 'MOUZ',
+    'heroic': 'HEROIC',
+    'big': 'BIG',
+    'vitality': 'Team Vitality',
+    'spirit': 'Team Spirit',
+    'eternal fire': 'Eternal Fire',
+    'eternalfire': 'Eternal Fire',
+    'eternal-fire': 'Eternal Fire',
+    'forze': 'FORZE',
+    'gamerlegion': 'GamerLegion',
+    'gamer legion': 'GamerLegion',
+    'gamer-legion': 'GamerLegion',
+    'monte': 'Monte',
+    'natus vincere': 'NAVI',
+    'natus-vincere': 'NAVI',
+    'team spirit': 'Team Spirit',
+    'team-spirit': 'Team Spirit',
+    'vitality': 'Team Vitality',
+    'team-vitality': 'Team Vitality'
   };
   
-  return teamNames[name] || name.charAt(0).toUpperCase() + name.slice(1);
+  return teamNames[normalizedName] || name;
 }
 
 // Function to generate team colors based on common esports team colors
@@ -40,17 +69,25 @@ function getTeamColors(teamName) {
     'AGO': { primary: '#dc267f', secondary: '#726180' },
     'Astralis': { primary: '#ff0000', secondary: '#ffffff' },
     'Bestia': { primary: '#8b5cf6', secondary: '#ffffff' },
+    'BIG': { primary: '#000000', secondary: '#ffffff' },
     'Cloud9': { primary: '#0066cc', secondary: '#ffffff' },
+    'Eternal Fire': { primary: '#ff6b35', secondary: '#ffffff' },
     'FaZe Clan': { primary: '#000000', secondary: '#ffffff' },
     'Fluxo': { primary: '#00d4aa', secondary: '#ffffff' },
     'Fnatic': { primary: '#ff6600', secondary: '#000000' },
+    'FORZE': { primary: '#ff0000', secondary: '#ffffff' },
+    'GamerLegion': { primary: '#8b5cf6', secondary: '#ffffff' },
     'G2 Esports': { primary: '#000000', secondary: '#ffffff' },
+    'HEROIC': { primary: '#ffd700', secondary: '#000000' },
+    'MOUZ': { primary: '#000000', secondary: '#ffffff' },
+    'Monte': { primary: '#3b82f6', secondary: '#ffffff' },
     'Team Liquid': { primary: '#0066cc', secondary: '#ffffff' },
     'NAVI': { primary: '#ffd700', secondary: '#000000' },
     'Ninjas in Pyjamas': { primary: '#000000', secondary: '#ffffff' },
     'Players': { primary: '#3b82f6', secondary: '#ffffff' },
     'Red Reserve': { primary: '#da1e28', secondary: '#cc666b' },
     'Sprout': { primary: '#34bc6e', secondary: '#726180' },
+    'Team Spirit': { primary: '#ff6b35', secondary: '#ffffff' },
     'Team Vitality': { primary: '#ffd700', secondary: '#000000' },
     'Windigo': { primary: '#7732bb', secondary: '#5e6868' },
     'x6tence': { primary: '#c22dd5', secondary: '#473793' },
