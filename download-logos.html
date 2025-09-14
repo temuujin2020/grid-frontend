@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download Team Logos from Liquipedia</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0f141d;
+      --text: #dbe8ff;
+      --muted: #8491a8;
+      --border: #1d2a3d;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: var(--text);
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    .button:hover {
+      background: #2563eb;
+    }
+
+    .button.success {
+      background: var(--success);
+    }
+
+    .button.error {
+      background: var(--error);
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+
+    .status.success {
+      background: var(--success);
+      color: white;
+    }
+
+    .status.error {
+      background: var(--error);
+      color: white;
+    }
+
+    .status.warning {
+      background: var(--warning);
+      color: white;
+    }
+
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .logo-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .logo-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      object-fit: contain;
+      background: #0b0c0f;
+      border: 1px solid var(--border);
+      margin: 0 auto 8px;
+      display: block;
+    }
+
+    .team-name {
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 5px;
+    }
+
+    .download-status {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 5px;
+    }
+
+    .download-status.success {
+      background: var(--success);
+      color: white;
+    }
+
+    .download-status.error {
+      background: var(--error);
+      color: white;
+    }
+
+    .download-status.pending {
+      background: var(--warning);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Download Team Logos from Liquipedia</h1>
+    
+    <div class="section">
+      <h3>Download Control</h3>
+      <button onclick="downloadAllLogos()" class="button">Download All Logos</button>
+      <button onclick="clearResults()" class="button">Clear Results</button>
+      <div id="downloadStatus"></div>
+    </div>
+
+    <div class="section">
+      <h3>Downloaded Logos</h3>
+      <div id="logoGrid" class="logo-grid"></div>
+    </div>
+
+    <div class="section">
+      <h3>Generated Code</h3>
+      <button onclick="generateCode()" class="button">Generate Team Data Code</button>
+      <pre id="generatedCode" style="background: var(--bg); padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 12px;"></pre>
+    </div>
+  </div>
+
+  <script>
+    // Active teams from Liquipedia
+    const activeTeams = [
+      // Western Europe
+      '3DMAX', 'DUSTY', 'GenOne', 'Team Vitality',
+      // Central Europe  
+      'BIG', 'Team LEISURE', 'mYinsanity', 'Permitta Esports', 'Sissi State Punks',
+      // Northern Europe
+      '777 Esports', 'Alliance', 'Astralis', 'BC.Game Esports', 'ECSTATIC', 'EYEBALLERS', 'FaZe Clan', 'Fnatic', 'HAVU', 'HEROIC', 'Johnny Speeds', 'Lemondogs', 'Lilmix', 'MASONIC',
+      // Academy Teams
+      'Aurora Young Blud', 'BIG Academy', 'Dark Tigers', 'ENCE Academy', 'FORZE Reload', 'FURIA Academy', 'G2 Ares', 'MIBR Academy', 'MOUZ NXT', 'paiN Gaming Academy', 'Team Spirit Academy', 'VP.Prodigy', 'Wildcard Academy', 'Young Ninjas',
+      // And many more...
+      'NAVI', 'G2 Esports', 'Team Liquid', 'Cloud9', 'MIBR', 'FURIA', 'paiN Gaming', 'Imperial', 'Fluxo', 'Bestia', '1WIN', 'Y5', 'Players'
+    ];
+
+    let downloadedLogos = {};
+
+    async function downloadLogo(teamName) {
+      try {
+        // Try different Liquipedia logo URL patterns
+        const logoUrls = [
+          `https://liquipedia.net/counterstrike/images/${teamName.replace(/[^a-zA-Z0-9]/g, '_')}/logo_std.png`,
+          `https://liquipedia.net/counterstrike/images/${teamName.replace(/[^a-zA-Z0-9]/g, '_')}/logo_lightmode.png`,
+          `https://liquipedia.net/counterstrike/images/${teamName.replace(/[^a-zA-Z0-9]/g, '_')}/logo.png`
+        ];
+
+        for (const url of logoUrls) {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              const blob = await response.blob();
+              const base64 = await blobToBase64(blob);
+              
+              downloadedLogos[teamName] = {
+                name: teamName,
+                logoUrl: base64,
+                source: 'liquipedia',
+                originalUrl: url
+              };
+              
+              return { success: true, url: base64 };
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+        
+        return { success: false, error: 'No valid logo found' };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function downloadAllLogos() {
+      const statusDiv = document.getElementById('downloadStatus');
+      const gridDiv = document.getElementById('logoGrid');
+      
+      statusDiv.innerHTML = '<div class="status warning">Starting download process...</div>';
+      gridDiv.innerHTML = '';
+      
+      let successCount = 0;
+      let totalCount = activeTeams.length;
+      
+      for (const teamName of activeTeams) {
+        const card = createLogoCard(teamName, 'pending');
+        gridDiv.appendChild(card);
+        
+        const result = await downloadLogo(teamName);
+        
+        if (result.success) {
+          successCount++;
+          updateLogoCard(card, teamName, 'success', result.url);
+        } else {
+          updateLogoCard(card, teamName, 'error', null);
+        }
+        
+        // Update status
+        statusDiv.innerHTML = `<div class="status warning">Downloaded ${successCount}/${totalCount} logos...</div>`;
+      }
+      
+      statusDiv.innerHTML = `<div class="status success">Download complete! ${successCount}/${totalCount} logos downloaded successfully.</div>`;
+    }
+
+    function createLogoCard(teamName, status) {
+      const card = document.createElement('div');
+      card.className = 'logo-card';
+      card.id = `card-${teamName}`;
+      
+      const img = document.createElement('img');
+      img.className = 'logo-img';
+      img.alt = `${teamName} logo`;
+      
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'team-name';
+      nameDiv.textContent = teamName;
+      
+      const statusDiv = document.createElement('div');
+      statusDiv.className = `download-status ${status}`;
+      statusDiv.textContent = status === 'pending' ? 'Downloading...' : status;
+      
+      card.appendChild(img);
+      card.appendChild(nameDiv);
+      card.appendChild(statusDiv);
+      
+      return card;
+    }
+
+    function updateLogoCard(card, teamName, status, logoUrl) {
+      const img = card.querySelector('.logo-img');
+      const statusDiv = card.querySelector('.download-status');
+      
+      if (logoUrl) {
+        img.src = logoUrl;
+      }
+      
+      statusDiv.className = `download-status ${status}`;
+      statusDiv.textContent = status === 'success' ? 'Downloaded' : 'Failed';
+    }
+
+    function clearResults() {
+      document.getElementById('logoGrid').innerHTML = '';
+      document.getElementById('downloadStatus').innerHTML = '';
+      document.getElementById('generatedCode').textContent = '';
+      downloadedLogos = {};
+    }
+
+    function generateCode() {
+      const codeDiv = document.getElementById('generatedCode');
+      
+      let code = '// Downloaded team logos from Liquipedia\n';
+      code += 'const liquipediaTeams = {\n';
+      
+      Object.entries(downloadedLogos).forEach(([teamName, data]) => {
+        const normalizedName = teamName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        code += `  '${normalizedName}': {\n`;
+        code += `    name: '${teamName}',\n`;
+        code += `    logoUrl: '${data.logoUrl}',\n`;
+        code += `    source: 'liquipedia'\n`;
+        code += `  },\n`;
+      });
+      
+      code += '};\n\n';
+      code += '// Usage in your app:\n';
+      code += 'const teamData = liquipediaTeams[normalizedTeamName] || fallbackData;';
+      
+      codeDiv.textContent = code;
+    }
+  </script>
+</body>
+</html>
