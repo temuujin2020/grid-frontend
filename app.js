@@ -27,51 +27,14 @@
   // Team cache for storing real team data
   const teamCache = new Map();
 
-  // ---- GraphQL Functions ----
+  // ---- Team Data Functions ----
   async function fetchTeamData(teamName) {
     if (teamCache.has(teamName)) {
       return teamCache.get(teamName);
     }
 
-    try {
-      const query = `
-        query GetTeams($search: String!) {
-          teams(first: 10, search: $search) {
-            edges {
-              node {
-                id
-                name
-                colorPrimary
-                colorSecondary
-                logoUrl
-              }
-            }
-          }
-        }
-      `;
-
-      const response = await fetch(GRAPHQL_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query,
-          variables: { search: teamName }
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.data?.teams?.edges?.length > 0) {
-        const team = data.data.teams.edges[0].node;
-        teamCache.set(teamName, team);
-        return team;
-      }
-    } catch (error) {
-      console.warn(`Failed to fetch team data for ${teamName}:`, error);
-    }
-
+    // For now, skip GraphQL API calls due to 404 errors
+    // Return null to use fallback logos
     return null;
   }
 
@@ -126,9 +89,14 @@
         };
       }
       
-      // Fallback to placeholder logo if no real data found
+      // Generate better-looking team logos
       const teamName = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const logoUrl = teamName.length > 0 ? `data:image/svg+xml;base64,${btoa(`<svg width="28" height="28" xmlns="http://www.w3.org/2000/svg"><rect width="28" height="28" fill="#4a5568" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-family="Arial" font-size="12" font-weight="bold">${teamName.charAt(0).toUpperCase()}</text></svg>`)}` : "";
+      const firstLetter = teamName.charAt(0).toUpperCase();
+      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
+      const colorIndex = teamName.charCodeAt(0) % colors.length;
+      const bgColor = colors[colorIndex];
+      
+      const logoUrl = teamName.length > 0 ? `data:image/svg+xml;base64,${btoa(`<svg width="28" height="28" xmlns="http://www.w3.org/2000/svg"><rect width="28" height="28" fill="${bgColor}" rx="6"/><text x="14" y="19" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${firstLetter}</text></svg>`)}` : "";
       
       return {
         name: displayName,
@@ -320,8 +288,16 @@
 
     try {
       const [liveRes, upRes] = await Promise.all([
-        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json()),
-        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal }).then(r => r.json())
+        fetch(`${API_BASE}/live?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal })
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          }),
+        fetch(`${API_BASE}/upcoming?hours=${UPCOMING_HOURS}`, { cache: "no-store", signal: ctrl.signal })
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          })
       ]);
 
       if (ctrl.signal.aborted) return;
@@ -347,6 +323,10 @@
       if (ctrl.signal.aborted) return;
       console.error("[load] error:", err);
       setLastUpdated("error");
+      
+      // Show empty state on error
+      renderList(LIST_LIVE, [], "Error loading live matches.");
+      renderList(LIST_UPCOMING, [], "Error loading upcoming matches.");
     }
   }
 
