@@ -13,6 +13,7 @@
 
   // ---- Config / URL params ----
   const API_BASE = ROOT.dataset.api || "https://grid-proxy.onrender.com/api/series";
+  const GRAPHQL_API = "https://api.grid.gg/graphql";
   const urlParams = new URLSearchParams(location.search);
 
   let refreshMs = Number(urlParams.get("refresh") || ROOT.dataset.refresh || 15000);
@@ -22,6 +23,57 @@
   const UPCOMING_HOURS = Number(urlParams.get("hoursUpcoming") || 24);
 
   if (UP_HOURS_SPAN) UP_HOURS_SPAN.textContent = String(UPCOMING_HOURS);
+
+  // Team cache for storing real team data
+  const teamCache = new Map();
+
+  // ---- GraphQL Functions ----
+  async function fetchTeamData(teamName) {
+    if (teamCache.has(teamName)) {
+      return teamCache.get(teamName);
+    }
+
+    try {
+      const query = `
+        query GetTeams($search: String!) {
+          teams(first: 10, search: $search) {
+            edges {
+              node {
+                id
+                name
+                colorPrimary
+                colorSecondary
+                logoUrl
+              }
+            }
+          }
+        }
+      `;
+
+      const response = await fetch(GRAPHQL_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          variables: { search: teamName }
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.data?.teams?.edges?.length > 0) {
+        const team = data.data.teams.edges[0].node;
+        teamCache.set(teamName, team);
+        return team;
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch team data for ${teamName}:`, error);
+    }
+
+    return null;
+  }
 
   if (REFRESH_SELECT) {
     const cur = String(refreshMs);
@@ -46,7 +98,7 @@
   }
 
   // ---- Normalizer ----
-  function pullTeamFields(t) {
+  async function pullTeamFields(t) {
     if (!t) return {};
     
     // Handle both string team names and object team data
@@ -62,7 +114,19 @@
       // Keep real team names as they are
       else if (t.length > 3 && !t.includes('-')) displayName = t;
       
-      // Generate a simple logo URL for known teams
+      // Try to fetch real team data from GraphQL API
+      const realTeamData = await fetchTeamData(displayName);
+      
+      if (realTeamData) {
+        return {
+          name: realTeamData.name,
+          logoUrl: realTeamData.logoUrl || "",
+          colorPrimary: realTeamData.colorPrimary || "",
+          colorSecondary: realTeamData.colorSecondary || ""
+        };
+      }
+      
+      // Fallback to placeholder logo if no real data found
       const teamName = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const logoUrl = teamName.length > 0 ? `data:image/svg+xml;base64,${btoa(`<svg width="28" height="28" xmlns="http://www.w3.org/2000/svg"><rect width="28" height="28" fill="#4a5568" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-family="Arial" font-size="12" font-weight="bold">${teamName.charAt(0).toUpperCase()}</text></svg>`)}` : "";
       
@@ -104,10 +168,12 @@
     return "CS2";
   }
 
-  function normalize(items, isLive) {
-    return (items || []).map(it => {
-      const tA = pullTeamFields(it.teams?.[0]);
-      const tB = pullTeamFields(it.teams?.[1]);
+  async function normalize(items, isLive) {
+    const normalizedItems = [];
+    
+    for (const it of (items || [])) {
+      const tA = await pullTeamFields(it.teams?.[0]);
+      const tB = await pullTeamFields(it.teams?.[1]);
 
       const bestOf =
         it.bestOf ??
@@ -128,7 +194,7 @@
 
       const gameType = getGameType([tA, tB]);
 
-      return {
+      normalizedItems.push({
         id: String(it.id ?? ""),
         teams: [tA, tB],
         event: eventName,
@@ -138,8 +204,10 @@
         scoreB: sB,
         live: !!isLive,
         gameType: gameType
-      };
-    }).filter(x => x.id && x.time);
+      });
+    }
+    
+    return normalizedItems.filter(x => x.id && x.time);
   }
 
   // ---- Renderer helpers ----
@@ -258,8 +326,8 @@
 
       if (ctrl.signal.aborted) return;
 
-      let live = normalize(liveRes.items || [], true);
-      let upcoming = normalize(upRes.items || [], false);
+      let live = await normalize(liveRes.items || [], true);
+      let upcoming = await normalize(upRes.items || [], false);
 
       // Filter for CS2 and DOTA2 only
       live = live.filter(m => m.gameType === "CS2" || m.gameType === "DOTA2");
