@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Logo Sources Test</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0f141d;
+      --text: #dbe8ff;
+      --muted: #8491a8;
+      --border: #1d2a3d;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: var(--text);
+    }
+
+    .test-section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .test-input {
+      width: 100%;
+      padding: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .test-button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-right: 10px;
+    }
+
+    .test-button:hover {
+      background: #2563eb;
+    }
+
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .logo-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .logo-img {
+      width: 60px;
+      height: 60px;
+      border-radius: 8px;
+      object-fit: contain;
+      background: #0b0c0f;
+      border: 1px solid var(--border);
+      margin: 0 auto 10px;
+      display: block;
+    }
+
+    .logo-badge {
+      width: 60px;
+      height: 60px;
+      border-radius: 8px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: #fff;
+      background: #343a40;
+      border: 1px solid var(--border);
+      margin: 0 auto 10px;
+    }
+
+    .source-name {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .status {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 5px;
+    }
+
+    .status.success {
+      background: var(--success);
+      color: white;
+    }
+
+    .status.error {
+      background: var(--error);
+      color: white;
+    }
+
+    .status.loading {
+      background: var(--warning);
+      color: white;
+    }
+
+    .url-display {
+      font-size: 10px;
+      color: var(--muted);
+      word-break: break-all;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Team Logo Sources Test</h1>
+    
+    <div class="test-section">
+      <h3>Test Team Logo from Multiple Sources</h3>
+      <input type="text" id="teamInput" class="test-input" placeholder="Enter team name (e.g., Sprout, NAVI, G2, FaZe)" value="Sprout" />
+      <button onclick="testAllSources()" class="test-button">Test All Sources</button>
+      <button onclick="clearResults()" class="test-button">Clear</button>
+      <div id="results"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>Available Logo Sources</h3>
+      <div id="sourcesInfo"></div>
+    </div>
+  </div>
+
+  <script>
+    // Logo sources configuration
+    const logoSources = {
+      'Grid.gg CDN': {
+        url: (teamName) => `https://cdn.grid.gg/assets/team-logos/${getTeamId(teamName)}`,
+        description: 'Official Grid.gg team logos (from your GraphQL query)',
+        working: true
+      },
+      'Liquipedia': {
+        url: (teamName) => `https://liquipedia.net/api/rest/v1/team/logo/${encodeURIComponent(teamName)}`,
+        description: 'Liquipedia esports database',
+        working: false
+      },
+      'Esports Wiki': {
+        url: (teamName) => `https://esports.wiki/api/team/logo/${encodeURIComponent(teamName)}`,
+        description: 'Esports Wiki team logos',
+        working: false
+      },
+      'HLTV': {
+        url: (teamName) => `https://www.hltv.org/api/team/logo/${encodeURIComponent(teamName)}`,
+        description: 'HLTV Counter-Strike team logos',
+        working: false
+      },
+      'OpenDota': {
+        url: (teamName) => `https://api.opendota.com/api/teams?search=${encodeURIComponent(teamName)}`,
+        description: 'OpenDota Dota 2 team database',
+        working: false
+      },
+      'Placeholder': {
+        url: (teamName) => `https://via.placeholder.com/60x60/4a5568/ffffff?text=${teamName.charAt(0).toUpperCase()}`,
+        description: 'Generic placeholder service',
+        working: true
+      }
+    };
+
+    // Team ID mapping from your GraphQL data
+    const teamIds = {
+      'sprout': '4a99a16c029eba9db3169ec2b83e284e',
+      'red reserve': '0304b33ec0316ea7b0fd50feff7bd7cb',
+      'windigo': 'f07247147aeced1c8148fd2066e8280d',
+      'x6tence': 'b17e066388a7a20e2b6468f443e3e3d3',
+      'ago': '82913104ea8c389fb963c7a8f1334e04'
+    };
+
+    function getTeamId(teamName) {
+      const normalized = teamName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return teamIds[normalized] || 'unknown-team';
+    }
+
+    function createLogoCard(sourceName, source, teamName) {
+      const card = document.createElement('div');
+      card.className = 'logo-card';
+      
+      const sourceDiv = document.createElement('div');
+      sourceDiv.className = 'source-name';
+      sourceDiv.textContent = sourceName;
+      
+      const logoImg = document.createElement('img');
+      logoImg.className = 'logo-img';
+      logoImg.alt = `${teamName} logo from ${sourceName}`;
+      logoImg.src = source.url(teamName);
+      
+      const logoBadge = document.createElement('div');
+      logoBadge.className = 'logo-badge';
+      logoBadge.textContent = teamName.charAt(0).toUpperCase();
+      
+      const statusDiv = document.createElement('div');
+      statusDiv.className = 'status loading';
+      statusDiv.textContent = 'Loading...';
+      
+      const urlDiv = document.createElement('div');
+      urlDiv.className = 'url-display';
+      urlDiv.textContent = source.url(teamName);
+      
+      logoImg.onload = function() {
+        statusDiv.className = 'status success';
+        statusDiv.textContent = 'Success';
+        logoBadge.style.display = 'none';
+      };
+      
+      logoImg.onerror = function() {
+        statusDiv.className = 'status error';
+        statusDiv.textContent = 'Failed';
+        logoImg.style.display = 'none';
+        logoBadge.style.display = 'flex';
+      };
+      
+      card.appendChild(sourceDiv);
+      card.appendChild(logoImg);
+      card.appendChild(logoBadge);
+      card.appendChild(statusDiv);
+      card.appendChild(urlDiv);
+      
+      return card;
+    }
+
+    function testAllSources() {
+      const teamName = document.getElementById('teamInput').value.trim();
+      const resultsDiv = document.getElementById('results');
+      
+      if (!teamName) {
+        resultsDiv.innerHTML = '<div style="color: var(--error);">Please enter a team name</div>';
+        return;
+      }
+      
+      resultsDiv.innerHTML = `<h4>Testing logo sources for "${teamName}":</h4>`;
+      
+      const gridDiv = document.createElement('div');
+      gridDiv.className = 'logo-grid';
+      
+      Object.entries(logoSources).forEach(([sourceName, source]) => {
+        const card = createLogoCard(sourceName, source, teamName);
+        gridDiv.appendChild(card);
+      });
+      
+      resultsDiv.appendChild(gridDiv);
+    }
+
+    function clearResults() {
+      document.getElementById('results').innerHTML = '';
+    }
+
+    function displaySourcesInfo() {
+      const sourcesDiv = document.getElementById('sourcesInfo');
+      let html = '<div style="display: grid; gap: 10px;">';
+      
+      Object.entries(logoSources).forEach(([sourceName, source]) => {
+        const status = source.working ? '✅ Working' : '❌ Not Working';
+        const statusColor = source.working ? 'var(--success)' : 'var(--error)';
+        
+        html += `
+          <div style="padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+            <strong>${sourceName}</strong> <span style="color: ${statusColor};">${status}</span><br>
+            <small style="color: var(--muted);">${source.description}</small>
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+      sourcesDiv.innerHTML = html;
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+      displaySourcesInfo();
+    });
+  </script>
+</body>
+</html>
