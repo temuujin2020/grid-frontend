@@ -177,12 +177,6 @@ html, body {
   font-weight: 500;
 }
 
-.upcoming-pill {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
 .finished-pill {
   background: var(--muted);
   color: var(--text);
