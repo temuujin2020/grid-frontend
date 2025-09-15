@@ -169,6 +169,7 @@ html, body {
 .region-flag {
   font-size: 16px;
   line-height: 1;
+  margin-right: 6px;
 }
 
 .series-pill {
