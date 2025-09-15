@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const PANDASCORE_API = "https://api.pandascore.co";
-const PANDASCORE_TOKEN = process.env.REACT_APP_PANDASCORE_TOKEN;
+// Use existing grid-proxy server
+const PROXY_API = "https://grid-proxy.onrender.com";
 
 // Legacy API (keeping as fallback)
 const API_BASE = "https://grid-proxy.onrender.com/api/series";
@@ -234,18 +234,14 @@ function App() {
       setLoading(true);
       setError(null);
 
-      if (!PANDASCORE_TOKEN) {
-        throw new Error('PandaScore API token not configured. Please set REACT_APP_PANDASCORE_TOKEN environment variable.');
-      }
-
-      console.log('Fetching matches from PandaScore...');
+      console.log('Fetching matches from proxy server...');
       
       // Fetch CS2 matches
       const [cs2LiveRes, cs2UpcomingRes, dota2LiveRes, dota2UpcomingRes] = await Promise.all([
-        fetch(`${PANDASCORE_API}/csgo/matches/running?token=${PANDASCORE_TOKEN}&per_page=50`).then(r => r.json()),
-        fetch(`${PANDASCORE_API}/csgo/matches/upcoming?token=${PANDASCORE_TOKEN}&per_page=50`).then(r => r.json()),
-        fetch(`${PANDASCORE_API}/dota2/matches/running?token=${PANDASCORE_TOKEN}&per_page=50`).then(r => r.json()),
-        fetch(`${PANDASCORE_API}/dota2/matches/upcoming?token=${PANDASCORE_TOKEN}&per_page=50`).then(r => r.json())
+        fetch(`${PROXY_API}/api/cs2/live`).then(r => r.json()),
+        fetch(`${PROXY_API}/api/cs2/upcoming`).then(r => r.json()),
+        fetch(`${PROXY_API}/api/dota2/live`).then(r => r.json()),
+        fetch(`${PROXY_API}/api/dota2/upcoming`).then(r => r.json())
       ]);
 
       // Process and normalize all matches
