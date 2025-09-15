@@ -177,6 +177,65 @@ html, body {
   font-weight: 500;
 }
 
+.upcoming-pill {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.finished-pill {
+  background: var(--muted);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.scores {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.score {
+  color: var(--text);
+  min-width: 20px;
+  text-align: center;
+}
+
+.score-separator {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.streams {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.stream-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--accent);
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.stream-link:hover {
+  background: var(--primary);
+  color: white;
+}
+
 .vs {
   display: none;
 }
