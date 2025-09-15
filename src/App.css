@@ -139,9 +139,6 @@ html, body {
   margin-left: 12px;
 }
 
-.vs {
-  display: none;
-}
 
 .event {
   color: var(--muted);
