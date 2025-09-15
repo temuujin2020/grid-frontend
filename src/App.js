@@ -293,7 +293,7 @@ function App() {
         <div className="card-top">
           <div className="card-top-left">
             <span className="pill game-pill">{gameType}</span>
-            {tournamentSeries && <span className="pill series-pill">{tournamentSeries}</span>
+            {tournamentSeries && <span className="pill series-pill">{tournamentSeries}</span>}
           </div>
           <div className="card-top-right">
             {match.status === 'running' && <span className="pill live-dot">LIVE</span>}
