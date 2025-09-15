@@ -136,8 +136,8 @@ html, body {
   align-items: flex-start;
   gap: 8px;
   font-weight: 700;
-  margin-left: 20px;
-  padding-left: 8px;
+  margin-left: 0;
+  padding-left: 0;
 }
 
 .vs {
@@ -199,6 +199,7 @@ html, body {
   gap: 10px;
   min-width: 0;
   width: 100%;
+  padding-left: 12px;
 }
 
 .team.right {
