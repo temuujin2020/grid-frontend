@@ -132,15 +132,36 @@ html, body {
 
 .teams {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
   font-weight: 700;
   margin-left: 20px;
   padding-left: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vs {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.game-pill {
+  background: var(--accent);
+  color: white;
+  padding: 2px 6px;
   border-radius: 4px;
-  padding: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.countdown {
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
 }
 
 
