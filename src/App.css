@@ -101,6 +101,18 @@ html, body {
   color: var(--muted);
 }
 
+.card-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -152,6 +164,19 @@ html, body {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.region-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.series-pill {
+  background: var(--muted);
+  color: var(--text);
+  border-color: var(--border);
+  font-size: 10px;
+  padding: 1px 6px;
 }
 
 .countdown {
