@@ -132,15 +132,15 @@ html, body {
 
 .teams {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   font-weight: 700;
+  margin-left: 12px;
 }
 
 .vs {
-  color: var(--muted);
-  font-weight: 600;
+  display: none;
 }
 
 .event {
@@ -173,14 +173,15 @@ html, body {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  width: 100%;
 }
 
 .team.right {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .team.right .team-name {
-  text-align: right;
+  text-align: left;
 }
 
 .team-logo {
