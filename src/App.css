@@ -180,65 +180,6 @@ html, body {
   padding: 1px 6px;
 }
 
-.clickable {
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.2s ease;
-}
-
-.clickable:hover {
-  color: var(--accent);
-}
-
-.expand-icon {
-  margin-left: 8px;
-  font-size: 10px;
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-
-.roster-expansion {
-  margin-top: 8px;
-  padding: 8px;
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.roster-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-}
-
-.roster-players {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.roster-player {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: var(--text);
-}
 
 .countdown {
   color: var(--danger);
