@@ -120,6 +120,7 @@ function App() {
         }
       ],
       event: match.league?.name || match.tournament?.name || 'Unknown Tournament',
+      leagueLogo: match.league?.image_url || null,
       serie: match.serie?.name || match.serie?.full_name || '',
       format: match.number_of_games || 3,
       time: match.scheduled_at || match.begin_at || '',
@@ -186,19 +187,32 @@ function App() {
     try {
       const date = new Date(timeString);
       const now = new Date();
-      const diffMs = date.getTime() - now.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       
-      if (diffDays === 0) {
-        return `Today ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      } else if (diffDays === 1) {
-        return `Tomorrow ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      } else if (diffDays === -1) {
-        return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      } else if (diffDays > 1 && diffDays <= 7) {
-        return date.toLocaleDateString([], { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+      // Get start of today in local timezone
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Get date without time for comparison
+      const matchDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      
+      if (matchDate.getTime() === today.getTime()) {
+        return `Today ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+      } else if (matchDate.getTime() === tomorrow.getTime()) {
+        return `Tomorrow ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+      } else if (matchDate.getTime() === yesterday.getTime()) {
+        return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
       } else {
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const diffMs = date.getTime() - now.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
+        if (diffDays > 1 && diffDays <= 7) {
+          return date.toLocaleDateString([], { weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true });
+        } else {
+          return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        }
       }
     } catch (error) {
       return 'Invalid Date';
@@ -300,22 +314,48 @@ function App() {
         
         <div className="teams">
           <div className="team">
-            <span className="team-name">{match.teams[0].name}</span>
-            {match.teams[0].acronym && <span className="team-acronym">({match.teams[0].acronym})</span>}
+            <img 
+              src={match.teams[0].logoUrl} 
+              alt={`${match.teams[0].name} logo`}
+              className="team-logo"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            <div className="team-badge" style={{display: 'none'}}>
+              {match.teams[0].acronym || match.teams[0].name.charAt(0)}
+            </div>
+            <div className="team-info">
+              <span className="team-name">{match.teams[0].name}</span>
+              {match.teams[0].acronym && <span className="team-acronym">({match.teams[0].acronym})</span>}
+            </div>
+            {match.results && match.results.length > 0 && (
+              <span className="team-score">{match.results[0]?.score || 0}</span>
+            )}
           </div>
           <div className="team">
-            <span className="team-name">{match.teams[1].name}</span>
-            {match.teams[1].acronym && <span className="team-acronym">({match.teams[1].acronym})</span>}
+            <img 
+              src={match.teams[1].logoUrl} 
+              alt={`${match.teams[1].name} logo`}
+              className="team-logo"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            <div className="team-badge" style={{display: 'none'}}>
+              {match.teams[1].acronym || match.teams[1].name.charAt(0)}
+            </div>
+            <div className="team-info">
+              <span className="team-name">{match.teams[1].name}</span>
+              {match.teams[1].acronym && <span className="team-acronym">({match.teams[1].acronym})</span>}
+            </div>
+            {match.results && match.results.length > 0 && (
+              <span className="team-score">{match.results[1]?.score || 0}</span>
+            )}
           </div>
         </div>
-
-        {match.results && match.results.length > 0 && (
-          <div className="scores">
-            <span className="score">{match.results[0]?.score || 0}</span>
-            <span className="score-separator">-</span>
-            <span className="score">{match.results[1]?.score || 0}</span>
-          </div>
-        )}
 
         {match.streams && match.streams.length > 0 && (
           <div className="streams">
@@ -334,9 +374,21 @@ function App() {
         )}
 
         <div className="card-bottom">
-          <span className="region-flag">{regionFlag}</span>
-          <span className="event">{match.event}</span>
-          {match.serie && <span className="serie-name"> • {match.serie}</span>}
+          <div className="card-bottom-left">
+            <span className="region-flag">{regionFlag}</span>
+            <span className="event">{match.event}</span>
+            {match.serie && <span className="serie-name"> • {match.serie}</span>}
+          </div>
+          {match.leagueLogo && (
+            <img 
+              src={match.leagueLogo} 
+              alt={`${match.event} logo`}
+              className="card-league-logo"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          )}
         </div>
       </div>
     );
@@ -373,7 +425,19 @@ function App() {
           <h2>Live Matches</h2>
           {Object.entries(liveGrouped).map(([tournament, matches]) => (
             <div key={tournament} className="tournament-group">
-              <h3 className="tournament-header">{tournament}</h3>
+              <div className="tournament-header">
+                {matches[0]?.leagueLogo && (
+                  <img 
+                    src={matches[0].leagueLogo} 
+                    alt={`${tournament} logo`}
+                    className="tournament-logo"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                )}
+                <h3>{tournament}</h3>
+              </div>
               <div className="cards">
                 {matches.map(match => (
                   <MatchCard key={match.id} match={match} />
@@ -389,7 +453,19 @@ function App() {
           <h2>Upcoming Matches</h2>
           {Object.entries(upcomingGrouped).map(([tournament, matches]) => (
             <div key={tournament} className="tournament-group">
-              <h3 className="tournament-header">{tournament}</h3>
+              <div className="tournament-header">
+                {matches[0]?.leagueLogo && (
+                  <img 
+                    src={matches[0].leagueLogo} 
+                    alt={`${tournament} logo`}
+                    className="tournament-logo"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                )}
+                <h3>{tournament}</h3>
+              </div>
               <div className="cards">
                 {matches.map(match => (
                   <MatchCard key={match.id} match={match} />

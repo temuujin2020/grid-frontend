@@ -76,16 +76,41 @@ html, body {
   gap: 12px;
 }
 
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 768px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1200px) {
+  .cards {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+
 /* Card */
 .card {
   background: linear-gradient(180deg, var(--panel), var(--panel2));
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 10px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 92px;
+  gap: 12px;
+  min-height: 120px;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--accent);
 }
 
 .card.live {
@@ -145,8 +170,7 @@ html, body {
 .teams {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 12px;
   font-weight: 700;
   margin-left: 0;
   padding-left: 0;
@@ -155,20 +179,72 @@ html, body {
 .team {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
 }
 
 .team-logo {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 6px;
+  background: #e9ecef;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
+  padding: 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.team-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, #343a40, #495057);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.team-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.team-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-acronym {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 500;
+}
+
+.team-score {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 24px;
+  text-align: center;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .serie-name {
@@ -183,26 +259,7 @@ html, body {
   border-color: var(--border);
 }
 
-.scores {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 8px 0;
-  font-weight: 700;
-  font-size: 16px;
-}
-
-.score {
-  color: var(--text);
-  min-width: 20px;
-  text-align: center;
-}
-
-.score-separator {
-  color: var(--muted);
-  font-weight: 500;
-}
+/* Old scores section removed - now using team-score */
 
 .streams {
   display: flex;
@@ -273,6 +330,9 @@ html, body {
 }
 
 .tournament-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   color: var(--text);
   font-size: 16px;
   font-weight: 600;
@@ -281,6 +341,41 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
+.tournament-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #e9ecef;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
+  padding: 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.tournament-group {
+  margin-bottom: 32px;
+}
+
+.section {
+  margin-bottom: 40px;
+}
+
+
+.card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
 
 .event {
   color: var(--muted);
@@ -288,6 +383,18 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.card-league-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #e9ecef;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
+  padding: 1px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .empty {
@@ -306,66 +413,45 @@ html, body {
   font-size: 18px;
 }
 
-/* Team logos and badges */
-.team {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  width: 100%;
-  padding-left: 12px;
-}
-
-.team.right {
-  justify-content: flex-start;
-}
-
-.team.right .team-name {
-  text-align: left;
-}
-
-.team-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  object-fit: contain;
-  background: #0b0c0f;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  flex: 0 0 auto;
-}
-
-.team-badge {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  display: none; /* Hidden by default, shown when logo fails */
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  color: #fff;
-  background: #343a40;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.team-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #e6e6e6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* Duplicate team styles removed - using updated styles above */
 
 /* Small screens tweaks */
 @media (max-width: 420px) {
   .teams {
-    flex-direction: column;
-    gap: 4px;
-    text-align: center;
+    gap: 8px;
   }
+  
+  .team {
+    gap: 8px;
+  }
+  
+  .team-logo {
+    width: 28px;
+    height: 28px;
+    padding: 1px;
+  }
+  
+  .team-badge {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .team-score {
+    font-size: 16px;
+  }
+  
+  .tournament-logo {
+    width: 28px;
+    height: 28px;
+    padding: 1px;
+  }
+  
+  .card-league-logo {
+    width: 20px;
+    height: 20px;
+    padding: 1px;
+  }
+  
   .time {
     display: none;
   }

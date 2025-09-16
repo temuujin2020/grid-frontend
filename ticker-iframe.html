@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esports Ticker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0b0f14;
+            color: #dbe8ff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .ticker-container {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #0f141d, #0b111a);
+            border-top: 2px solid #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        .ticker-label {
+            background: #3b82f6;
+            color: white;
+            padding: 8px 16px;
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            z-index: 2;
+        }
+
+        .ticker-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            height: 100%;
+        }
+
+        .ticker-scroll {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            animation: scroll 60s linear infinite;
+            white-space: nowrap;
+        }
+
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 40px;
+            padding: 8px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .ticker-item.live {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .game-badge {
+            background: #3b82f6;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-right: 8px;
+            text-transform: uppercase;
+        }
+
+        .live-badge {
+            background: #ef4444;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-right: 8px;
+            text-transform: uppercase;
+            animation: pulse 2s infinite;
+        }
+
+        .team-names {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .vs {
+            color: #8491a8;
+            margin: 0 8px;
+        }
+
+        .time {
+            color: #8491a8;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #8491a8;
+            font-size: 14px;
+        }
+
+        .error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #ef4444;
+            font-size: 14px;
+        }
+
+        @keyframes scroll {
+            0% {
+                transform: translateX(100%);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        /* Pause on hover */
+        .ticker-container:hover .ticker-scroll {
+            animation-play-state: paused;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .ticker-container {
+                height: 50px;
+            }
+            
+            .ticker-label {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            
+            .ticker-item {
+                padding: 6px 12px;
+                font-size: 12px;
+                margin-right: 30px;
+            }
+            
+            .game-badge, .live-badge {
+                font-size: 9px;
+                padding: 1px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ticker-container">
+        <div class="ticker-label" id="ticker-label">Live Matches</div>
+        <div class="ticker-content">
+            <div id="ticker-scroll" class="ticker-scroll">
+                <div class="loading">Loading matches...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const PROXY_API = "https://grid-proxy.onrender.com";
+        const REFRESH_INTERVAL = 30000; // 30 seconds
+        const TICKER_SPEED = 60; // seconds for full scroll
+
+        // Normalize PandaScore match data
+        function normalizePandaScoreMatch(match, gameType) {
+            const team1 = match.opponents?.[0]?.opponent;
+            const team2 = match.opponents?.[1]?.opponent;
+            
+            return {
+                id: match.id,
+                teams: [
+                    {
+                        name: team1?.name || 'TBD',
+                        acronym: team1?.acronym || '',
+                    },
+                    {
+                        name: team2?.name || 'TBD', 
+                        acronym: team2?.acronym || '',
+                    }
+                ],
+                event: match.league?.name || match.tournament?.name || 'Unknown Tournament',
+                time: match.scheduled_at || match.begin_at || '',
+                live: match.status === 'running',
+                game: gameType,
+                status: match.status
+            };
+        }
+
+        // Format time display
+        function formatTime(timeString) {
+            if (!timeString) return 'TBD';
+            
+            try {
+                const date = new Date(timeString);
+                const now = new Date();
+                
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                
+                const matchDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                
+                if (matchDate.getTime() === today.getTime()) {
+                    return `Today ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else if (matchDate.getTime() === tomorrow.getTime()) {
+                    return `Tomorrow ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else if (matchDate.getTime() === yesterday.getTime()) {
+                    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else {
+                    const diffMs = date.getTime() - now.getTime();
+                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays > 1 && diffDays <= 7) {
+                        return date.toLocaleDateString([], { weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true });
+                    } else {
+                        return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+                    }
+                }
+            } catch (error) {
+                return 'Invalid Date';
+            }
+        }
+
+        // Create ticker item HTML
+        function createTickerItem(match) {
+            const isLive = match.live || match.status === 'running';
+            const gameType = match.game || 'CS2';
+            
+            return `
+                <div class="ticker-item ${isLive ? 'live' : ''}">
+                    ${isLive ? '<span class="live-badge">LIVE</span>' : ''}
+                    <span class="game-badge">${gameType}</span>
+                    <span class="team-names">
+                        ${match.teams[0].name}${match.teams[0].acronym ? ` (${match.teams[0].acronym})` : ''}
+                    </span>
+                    <span class="vs">vs</span>
+                    <span class="team-names">
+                        ${match.teams[1].name}${match.teams[1].acronym ? ` (${match.teams[1].acronym})` : ''}
+                    </span>
+                    <span class="time">${formatTime(match.time)}</span>
+                </div>
+            `;
+        }
+
+        // Load and display matches
+        async function loadMatches() {
+            try {
+                const tickerScroll = document.getElementById('ticker-scroll');
+                
+                const [cs2LiveRes, cs2UpcomingRes, dota2LiveRes, dota2UpcomingRes] = await Promise.all([
+                    fetch(`${PROXY_API}/api/cs2/live`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/cs2/upcoming`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/dota2/live`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/dota2/upcoming`).then(r => r.json())
+                ]);
+
+                const allLiveMatches = [
+                    ...(cs2LiveRes || []).map(match => normalizePandaScoreMatch(match, 'CS2')),
+                    ...(dota2LiveRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
+                ].filter(match => !match.event?.includes('GRID-TEST'));
+
+                const allUpcomingMatches = [
+                    ...(cs2UpcomingRes || []).map(match => normalizePandaScoreMatch(match, 'CS2')),
+                    ...(dota2UpcomingRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
+                ].filter(match => !match.event?.includes('GRID-TEST'));
+
+                const allMatches = [...allLiveMatches, ...allUpcomingMatches];
+
+                // Update label based on content
+                const tickerLabel = document.getElementById('ticker-label');
+                if (allLiveMatches.length > 0) {
+                    tickerLabel.textContent = 'Live Matches';
+                } else if (allUpcomingMatches.length > 0) {
+                    tickerLabel.textContent = 'Upcoming Matches';
+                } else {
+                    tickerLabel.textContent = 'No Matches';
+                }
+
+                if (allMatches.length === 0) {
+                    tickerScroll.innerHTML = '<div class="ticker-item">No matches available</div>';
+                    return;
+                }
+
+                const tickerItems = allMatches.map(match => createTickerItem(match)).join('');
+                tickerScroll.innerHTML = tickerItems + tickerItems;
+                
+                const totalWidth = tickerScroll.scrollWidth / 2;
+                const newDuration = Math.max(30, (totalWidth / window.innerWidth) * TICKER_SPEED);
+                tickerScroll.style.animationDuration = `${newDuration}s`;
+
+            } catch (error) {
+                console.error('Error loading matches:', error);
+                const tickerScroll = document.getElementById('ticker-scroll');
+                tickerScroll.innerHTML = '<div class="error">Unable to load matches</div>';
+            }
+        }
+
+        // Initialize
+        loadMatches();
+        setInterval(loadMatches, REFRESH_INTERVAL);
+
+        window.addEventListener('resize', () => {
+            const tickerScroll = document.getElementById('ticker-scroll');
+            const totalWidth = tickerScroll.scrollWidth / 2;
+            const newDuration = Math.max(30, (totalWidth / window.innerWidth) * TICKER_SPEED);
+            tickerScroll.style.animationDuration = `${newDuration}s`;
+        });
+    </script>
+</body>
+</html>
+

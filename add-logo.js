@@ -65,3 +65,5 @@ if (args.length >= 2) {
   console.log('❌ Please provide filename and team name');
   console.log('Example: node add-logo.js "mouz.png" "MOUZ" "#000000" "#ffffff"');
 }
+
+
