@@ -34,6 +34,16 @@ app.get('/api/cs2/upcoming', async (req, res) => {
   }
 });
 
+app.get('/api/cs2/past', async (req, res) => {
+  try {
+    const response = await fetch(`${PANDASCORE_API}/csgo/matches/past?token=${PANDASCORE_TOKEN}&per_page=50`);
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch CS2 past matches' });
+  }
+});
+
 // Proxy endpoint for DOTA 2 matches
 app.get('/api/dota2/live', async (req, res) => {
   try {
