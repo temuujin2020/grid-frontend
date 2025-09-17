@@ -64,6 +64,46 @@ html, body {
   gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  background: var(--panel2);
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.tab-navigation button {
+  padding: 12px 20px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.9rem;
+  min-width: 120px;
+}
+
+.tab-navigation button:hover {
+  background: var(--panel2);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.tab-navigation button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .game-filter button {
@@ -481,6 +521,16 @@ html, body {
   
   .game-filter button {
     width: 200px;
+  }
+  
+  .tab-navigation {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .tab-navigation button {
+    width: 100%;
+    max-width: 300px;
   }
   
   .match-header {

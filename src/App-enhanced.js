@@ -315,11 +315,9 @@ const MatchCard = ({ match, index }) => {
 function App() {
   const [liveMatches, setLiveMatches] = useState([]);
   const [upcomingMatches, setUpcomingMatches] = useState([]);
-  const [playedMatches, setPlayedMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedGame, setSelectedGame] = useState('all');
-  const [activeTab, setActiveTab] = useState('live');
 
   // Load matches data from PandaScore
   const loadMatches = async () => {
@@ -329,14 +327,12 @@ function App() {
 
       console.log('Fetching matches from proxy server...');
       
-      // Fetch CS2 and DOTA2 matches (live, upcoming, and past)
-      const [cs2LiveRes, cs2UpcomingRes, cs2PastRes, dota2LiveRes, dota2UpcomingRes, dota2PastRes] = await Promise.all([
+      // Fetch CS2 matches
+      const [cs2LiveRes, cs2UpcomingRes, dota2LiveRes, dota2UpcomingRes] = await Promise.all([
         fetch(`${PROXY_API}/api/cs2/live`).then(r => r.json()),
         fetch(`${PROXY_API}/api/cs2/upcoming`).then(r => r.json()),
-        fetch(`${PROXY_API}/api/cs2/past`).then(r => r.json()),
         fetch(`${PROXY_API}/api/dota2/live`).then(r => r.json()),
-        fetch(`${PROXY_API}/api/dota2/upcoming`).then(r => r.json()),
-        fetch(`${PROXY_API}/api/dota2/past`).then(r => r.json())
+        fetch(`${PROXY_API}/api/dota2/upcoming`).then(r => r.json())
       ]);
 
       // Process and normalize all matches
@@ -350,21 +346,14 @@ function App() {
         ...(dota2UpcomingRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
       ].filter(match => !match.tournament.name?.includes('GRID-TEST'));
 
-      const allPlayedMatches = [
-        ...(cs2PastRes || []).map(match => normalizePandaScoreMatch(match, 'CS2')),
-        ...(dota2PastRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
-      ].filter(match => !match.tournament.name?.includes('GRID-TEST'));
-
       setLiveMatches(allLiveMatches);
       setUpcomingMatches(allUpcomingMatches);
-      setPlayedMatches(allPlayedMatches);
       setError(null);
     } catch (err) {
       console.error('Error loading matches:', err);
       setError(err.message);
       setLiveMatches([]);
       setUpcomingMatches([]);
-      setPlayedMatches([]);
     } finally {
       setLoading(false);
     }
@@ -383,10 +372,6 @@ function App() {
   const filteredUpcomingMatches = selectedGame === 'all' 
     ? upcomingMatches 
     : upcomingMatches.filter(match => match.gameType === selectedGame);
-
-  const filteredPlayedMatches = selectedGame === 'all' 
-    ? playedMatches 
-    : playedMatches.filter(match => match.gameType === selectedGame);
 
   if (loading) {
     return (
@@ -439,91 +424,40 @@ function App() {
             DOTA 2
           </button>
         </div>
-
-        <div className="tab-navigation">
-          <button 
-            className={activeTab === 'live' ? 'active' : ''}
-            onClick={() => setActiveTab('live')}
-          >
-            🔴 Live ({filteredLiveMatches.length})
-          </button>
-          <button 
-            className={activeTab === 'upcoming' ? 'active' : ''}
-            onClick={() => setActiveTab('upcoming')}
-          >
-            ⏰ Upcoming ({filteredUpcomingMatches.length})
-          </button>
-          <button 
-            className={activeTab === 'played' ? 'active' : ''}
-            onClick={() => setActiveTab('played')}
-          >
-            ✅ Played ({filteredPlayedMatches.length})
-          </button>
-        </div>
       </header>
 
       <main className="app-main">
-        {/* Live Matches Tab */}
-        {activeTab === 'live' && (
+        {filteredLiveMatches.length > 0 && (
           <section className="matches-section">
             <h2 className="section-title">
               🔴 Live Matches ({filteredLiveMatches.length})
             </h2>
-            {filteredLiveMatches.length > 0 ? (
-              <div className="matches-grid">
-                {filteredLiveMatches.map((match, index) => (
-                  <MatchCard key={match.id} match={match} index={index} />
-                ))}
-              </div>
-            ) : (
-              <div className="no-matches">
-                <h3>No live matches</h3>
-                <p>Check back later for live matches!</p>
+            <div className="matches-grid">
+              {filteredLiveMatches.map((match, index) => (
+                <MatchCard key={match.id} match={match} index={index} />
+              ))}
             </div>
-            )}
-        </section>
-      )}
+          </section>
+        )}
 
-        {/* Upcoming Matches Tab */}
-        {activeTab === 'upcoming' && (
+        {filteredUpcomingMatches.length > 0 && (
           <section className="matches-section">
             <h2 className="section-title">
               ⏰ Upcoming Matches ({filteredUpcomingMatches.length})
             </h2>
-            {filteredUpcomingMatches.length > 0 ? (
-              <div className="matches-grid">
-                {filteredUpcomingMatches.map((match, index) => (
-                  <MatchCard key={match.id} match={match} index={index} />
-                ))}
-              </div>
-            ) : (
-              <div className="no-matches">
-                <h3>No upcoming matches</h3>
-                <p>Check back later for upcoming matches!</p>
+            <div className="matches-grid">
+              {filteredUpcomingMatches.map((match, index) => (
+                <MatchCard key={match.id} match={match} index={index} />
+              ))}
             </div>
-            )}
-        </section>
-      )}
-
-        {/* Played Matches Tab */}
-        {activeTab === 'played' && (
-          <section className="matches-section">
-            <h2 className="section-title">
-              ✅ Played Matches ({filteredPlayedMatches.length})
-            </h2>
-            {filteredPlayedMatches.length > 0 ? (
-              <div className="matches-grid">
-                {filteredPlayedMatches.map((match, index) => (
-                  <MatchCard key={match.id} match={match} index={index} />
-                ))}
-              </div>
-            ) : (
-        <div className="no-matches">
-                <h3>No played matches</h3>
-                <p>No recent match results available.</p>
-        </div>
-      )}
           </section>
+        )}
+
+        {filteredLiveMatches.length === 0 && filteredUpcomingMatches.length === 0 && (
+          <div className="no-matches">
+            <h2>No matches available</h2>
+            <p>Check back later for upcoming matches!</p>
+          </div>
         )}
       </main>
 
