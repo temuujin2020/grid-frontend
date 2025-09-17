@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esports Matches Ticker - Final Version</title>
+    <style>
+        /* Minimal CSS that won't break WordPress layout */
+        .esports-ticker-container {
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100% !important;
+            height: 50px !important;
+            z-index: 999999 !important;
+            background: linear-gradient(90deg, #1a1a1a, #0d1117) !important;
+            border-top: 2px solid #3b82f6 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            color: #ffffff !important;
+            overflow: hidden !important;
+            box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        /* Add minimal body padding to prevent overlap */
+        body {
+            padding-bottom: 50px !important;
+        }
+
+        .ticker-wrapper {
+            display: flex !important;
+            align-items: center !important;
+            height: 100% !important;
+            position: relative !important;
+        }
+
+        .ticker-label {
+            background: #3b82f6 !important;
+            color: white !important;
+            padding: 8px 12px !important;
+            font-weight: 700 !important;
+            font-size: 12px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            height: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        .ticker-content {
+            flex: 1 !important;
+            overflow: hidden !important;
+            position: relative !important;
+            height: 100% !important;
+            cursor: grab !important;
+        }
+
+        .ticker-content:active {
+            cursor: grabbing !important;
+        }
+
+        .ticker-scroll {
+            display: flex !important;
+            align-items: center !important;
+            height: 100% !important;
+            white-space: nowrap !important;
+            will-change: transform !important;
+            position: relative !important;
+        }
+
+        .ticker-item {
+            display: inline-flex !important;
+            align-items: center !important;
+            margin-right: 30px !important;
+            padding: 6px 12px !important;
+            background: rgba(59, 130, 246, 0.15) !important;
+            border: 1px solid rgba(59, 130, 246, 0.3) !important;
+            border-radius: 15px !important;
+            font-size: 11px !important;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            color: #ffffff !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            position: relative !important;
+        }
+
+        .ticker-item:hover {
+            background: rgba(59, 130, 246, 0.25) !important;
+            transform: scale(1.05) !important;
+        }
+
+        .ticker-item.live {
+            background: rgba(239, 68, 68, 0.15) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+        }
+
+        .ticker-item.live:hover {
+            background: rgba(239, 68, 68, 0.25) !important;
+        }
+
+        .game-badge {
+            background: #3b82f6 !important;
+            color: white !important;
+            padding: 2px 5px !important;
+            border-radius: 3px !important;
+            font-size: 9px !important;
+            font-weight: 600 !important;
+            margin-right: 6px !important;
+            text-transform: uppercase !important;
+        }
+
+        .live-badge {
+            background: #ef4444 !important;
+            color: white !important;
+            padding: 2px 5px !important;
+            border-radius: 3px !important;
+            font-size: 9px !important;
+            font-weight: 600 !important;
+            margin-right: 6px !important;
+            text-transform: uppercase !important;
+            animation: pulse 2s infinite !important;
+        }
+
+        .team-names {
+            font-weight: 600 !important;
+            margin-right: 6px !important;
+            color: #ffffff !important;
+        }
+
+        .vs {
+            color: #9ca3af !important;
+            margin: 0 6px !important;
+            font-size: 10px !important;
+        }
+
+        .time {
+            color: #9ca3af !important;
+            font-size: 10px !important;
+            margin-left: 6px !important;
+        }
+
+        .score {
+            color: #ef4444 !important;
+            font-weight: 700 !important;
+            font-size: 10px !important;
+            margin-left: 6px !important;
+        }
+
+        .loading, .error {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 100% !important;
+            color: #9ca3af !important;
+            font-size: 12px !important;
+        }
+
+        .error {
+            color: #ef4444 !important;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1 !important;
+            }
+            50% {
+                opacity: 0.7 !important;
+            }
+        }
+
+        /* Stream dropdown for each match */
+        .stream-dropdown {
+            position: absolute !important;
+            bottom: 100% !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: rgba(0, 0, 0, 0.95) !important;
+            border: 1px solid #3b82f6 !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
+            min-width: 200px !important;
+            z-index: 1000000 !important;
+            display: none !important;
+            box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        .stream-dropdown.show {
+            display: block !important;
+        }
+
+        .stream-dropdown::after {
+            content: '' !important;
+            position: absolute !important;
+            top: 100% !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            border: 5px solid transparent !important;
+            border-top-color: #3b82f6 !important;
+        }
+
+        .stream-title {
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            color: #3b82f6 !important;
+            margin-bottom: 8px !important;
+            text-align: center !important;
+        }
+
+        .stream-links {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 5px !important;
+        }
+
+        .stream-link {
+            background: rgba(59, 130, 246, 0.1) !important;
+            border: 1px solid rgba(59, 130, 246, 0.3) !important;
+            padding: 6px 8px !important;
+            border-radius: 4px !important;
+            text-decoration: none !important;
+            color: white !important;
+            transition: all 0.2s ease !important;
+            font-size: 10px !important;
+            text-align: center !important;
+        }
+
+        .stream-link:hover {
+            background: rgba(59, 130, 246, 0.2) !important;
+        }
+
+        .stream-platform {
+            font-weight: 600 !important;
+            color: #3b82f6 !important;
+        }
+
+        .stream-url {
+            font-size: 8px !important;
+            color: #9ca3af !important;
+            word-break: break-all !important;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .esports-ticker-container {
+                height: 45px !important;
+            }
+            
+            body {
+                padding-bottom: 45px !important;
+            }
+            
+            .ticker-item {
+                margin-right: 20px !important;
+                padding: 4px 8px !important;
+                font-size: 10px !important;
+            }
+            
+            .ticker-label {
+                padding: 6px 8px !important;
+                font-size: 10px !important;
+            }
+            
+            .stream-dropdown {
+                min-width: 150px !important;
+                padding: 8px !important;
+            }
+        }
+
+        /* Ensure smooth scrolling on mobile */
+        .ticker-content {
+            -webkit-overflow-scrolling: touch !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="esports-ticker-container">
+        <div class="ticker-wrapper">
+            <div class="ticker-label" id="ticker-label">Live Matches</div>
+            <div class="ticker-content" id="ticker-content">
+                <div class="ticker-scroll" id="ticker-scroll">
+                    <div class="loading">Loading matches...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const PROXY_API = "https://grid-proxy.onrender.com";
+        const REFRESH_INTERVAL = 30000; // 30 seconds
+        const TICKER_SPEED = 45; // seconds for full scroll
+
+        // State management
+        let isScrolling = false;
+        let isDragging = false;
+        let startX = 0;
+        let scrollLeft = 0;
+        let animationId = null;
+        let currentMatches = [];
+        let currentPosition = 0;
+        let autoScrollSpeed = 1; // pixels per frame
+
+        // Normalize PandaScore match data
+        function normalizePandaScoreMatch(match, gameType) {
+            const team1 = match.opponents?.[0]?.opponent;
+            const team2 = match.opponents?.[1]?.opponent;
+            
+            // Get scores for live matches
+            let score = '';
+            if (match.status === 'running' && match.results && match.results.length >= 2) {
+                const team1Score = match.results.find(r => r.team_id === team1?.id)?.score || 0;
+                const team2Score = match.results.find(r => r.team_id === team2?.id)?.score || 0;
+                score = `${team1Score}-${team2Score}`;
+            }
+            
+            return {
+                id: match.id,
+                teams: [
+                    {
+                        name: team1?.name || 'TBD',
+                        acronym: team1?.acronym || '',
+                    },
+                    {
+                        name: team2?.name || 'TBD', 
+                        acronym: team2?.acronym || '',
+                    }
+                ],
+                event: match.league?.name || match.tournament?.name || 'Unknown Tournament',
+                time: match.scheduled_at || match.begin_at || '',
+                live: match.status === 'running',
+                game: gameType,
+                status: match.status,
+                streams: match.streams_list || [],
+                score: score
+            };
+        }
+
+        // Format time display
+        function formatTime(timeString, isLive = false) {
+            if (!timeString) return 'TBD';
+            
+            try {
+                const date = new Date(timeString);
+                const now = new Date();
+                
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                
+                const matchDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                
+                if (isLive) {
+                    return `Started at ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else if (matchDate.getTime() === today.getTime()) {
+                    return `Today ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else if (matchDate.getTime() === tomorrow.getTime()) {
+                    return `Tomorrow ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else if (matchDate.getTime() === yesterday.getTime()) {
+                    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                } else {
+                    const diffMs = date.getTime() - now.getTime();
+                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays > 1 && diffDays <= 7) {
+                        return date.toLocaleDateString([], { weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true });
+                    } else {
+                        return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+                    }
+                }
+            } catch (error) {
+                return 'Invalid Date';
+            }
+        }
+
+        // Create ticker item HTML
+        function createTickerItem(match) {
+            const isLive = match.live || match.status === 'running';
+            const gameType = match.game || 'CS2';
+            
+            // Format team names with scores for live matches
+            let team1Display = match.teams[0].name + (match.teams[0].acronym ? ` (${match.teams[0].acronym})` : '');
+            let team2Display = match.teams[1].name + (match.teams[1].acronym ? ` (${match.teams[1].acronym})` : '');
+            
+            if (isLive && match.score) {
+                const scores = match.score.split('-');
+                team1Display += ` ${scores[0]}`;
+                team2Display = `${scores[1]} ${team2Display}`;
+            }
+            
+            return `
+                <div class="ticker-item ${isLive ? 'live' : ''}" data-match-id="${match.id}" data-streams='${JSON.stringify(match.streams)}'>
+                    ${isLive ? '<span class="live-badge">LIVE</span>' : ''}
+                    <span class="game-badge">${gameType}</span>
+                    <span class="team-names">${team1Display}</span>
+                    <span class="vs">vs</span>
+                    <span class="team-names">${team2Display}</span>
+                    <span class="time">${formatTime(match.time, isLive)}</span>
+                    <div class="stream-dropdown" id="stream-dropdown-${match.id}">
+                        <div class="stream-title">Stream Links</div>
+                        <div class="stream-links">
+                            ${match.streams && match.streams.length > 0 ? 
+                                match.streams.map(stream => `
+                                    <a href="${stream.raw_url}" target="_blank" class="stream-link">
+                                        <div class="stream-platform">${stream.official ? 'Official' : 'Community'} - ${stream.language.toUpperCase()}</div>
+                                        <div class="stream-url">${stream.raw_url}</div>
+                                    </a>
+                                `).join('') : 
+                                '<div class="stream-link">No streams available</div>'
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Auto-scroll animation
+        function animateScroll() {
+            if (!isDragging && !isScrolling) {
+                currentPosition -= autoScrollSpeed;
+                const tickerScroll = document.getElementById('ticker-scroll');
+                tickerScroll.style.transform = `translateX(${currentPosition}px)`;
+                
+                // Reset position when we've scrolled past the first set of items
+                const itemWidth = tickerScroll.scrollWidth / 2;
+                if (Math.abs(currentPosition) >= itemWidth) {
+                    currentPosition = 0;
+                }
+            }
+            animationId = requestAnimationFrame(animateScroll);
+        }
+
+        // Start auto-scroll
+        function startAutoScroll() {
+            if (!animationId) {
+                animateScroll();
+            }
+        }
+
+        // Stop auto-scroll
+        function stopAutoScroll() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        // Load and display matches
+        async function loadMatches() {
+            try {
+                const tickerScroll = document.getElementById('ticker-scroll');
+                
+                const [cs2LiveRes, cs2UpcomingRes, dota2LiveRes, dota2UpcomingRes] = await Promise.all([
+                    fetch(`${PROXY_API}/api/cs2/live`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/cs2/upcoming`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/dota2/live`).then(r => r.json()),
+                    fetch(`${PROXY_API}/api/dota2/upcoming`).then(r => r.json())
+                ]);
+
+                const allLiveMatches = [
+                    ...(cs2LiveRes || []).map(match => normalizePandaScoreMatch(match, 'CS2')),
+                    ...(dota2LiveRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
+                ].filter(match => !match.event?.includes('GRID-TEST'));
+
+                const allUpcomingMatches = [
+                    ...(cs2UpcomingRes || []).map(match => normalizePandaScoreMatch(match, 'CS2')),
+                    ...(dota2UpcomingRes || []).map(match => normalizePandaScoreMatch(match, 'DOTA 2'))
+                ].filter(match => !match.event?.includes('GRID-TEST'));
+
+                currentMatches = [...allLiveMatches, ...allUpcomingMatches];
+
+                const tickerLabel = document.getElementById('ticker-label');
+                if (allLiveMatches.length > 0) {
+                    tickerLabel.textContent = 'Live Matches';
+                } else if (allUpcomingMatches.length > 0) {
+                    tickerLabel.textContent = 'Upcoming Matches';
+                } else {
+                    tickerLabel.textContent = 'No Matches';
+                }
+
+                if (currentMatches.length === 0) {
+                    tickerScroll.innerHTML = '<div class="ticker-item">No matches available</div>';
+                    return;
+                }
+
+                const tickerItems = currentMatches.map(match => createTickerItem(match)).join('');
+                tickerScroll.innerHTML = tickerItems + tickerItems;
+                
+                // Reset position and start auto-scroll
+                currentPosition = 0;
+                startAutoScroll();
+
+            } catch (error) {
+                console.error('Error loading matches:', error);
+                const tickerScroll = document.getElementById('ticker-scroll');
+                tickerScroll.innerHTML = '<div class="error">Unable to load matches</div>';
+            }
+        }
+
+        // Manual scroll functionality
+        function setupManualScroll() {
+            const tickerContent = document.getElementById('ticker-content');
+            const tickerScroll = document.getElementById('ticker-scroll');
+            
+            // Mouse events
+            tickerContent.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                stopAutoScroll();
+                tickerContent.style.cursor = 'grabbing';
+                startX = e.pageX - tickerContent.offsetLeft;
+                scrollLeft = currentPosition;
+            });
+
+            tickerContent.addEventListener('mouseleave', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    tickerContent.style.cursor = 'grab';
+                    // Resume auto-scroll after a delay
+                    setTimeout(() => {
+                        if (!isScrolling) {
+                            startAutoScroll();
+                        }
+                    }, 2000);
+                }
+            });
+
+            tickerContent.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    tickerContent.style.cursor = 'grab';
+                    // Resume auto-scroll after a delay
+                    setTimeout(() => {
+                        if (!isScrolling) {
+                            startAutoScroll();
+                        }
+                    }, 2000);
+                }
+            });
+
+            tickerContent.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                const x = e.pageX - tickerContent.offsetLeft;
+                const walk = (x - startX) * 2;
+                currentPosition = scrollLeft + walk;
+                tickerScroll.style.transform = `translateX(${currentPosition}px)`;
+            });
+
+            // Touch events for mobile
+            let touchStartX = 0;
+            let touchScrollLeft = 0;
+
+            tickerContent.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                stopAutoScroll();
+                touchStartX = e.touches[0].pageX;
+                touchScrollLeft = currentPosition;
+            });
+
+            tickerContent.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                const touchX = e.touches[0].pageX;
+                const walk = (touchStartX - touchX) * 2;
+                currentPosition = touchScrollLeft - walk;
+                tickerScroll.style.transform = `translateX(${currentPosition}px)`;
+            });
+
+            tickerContent.addEventListener('touchend', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    // Resume auto-scroll after a delay
+                    setTimeout(() => {
+                        if (!isScrolling) {
+                            startAutoScroll();
+                        }
+                    }, 2000);
+                }
+            });
+
+            // Hover events
+            tickerContent.addEventListener('mouseenter', () => {
+                isScrolling = true;
+                stopAutoScroll();
+            });
+
+            tickerContent.addEventListener('mouseleave', () => {
+                isScrolling = false;
+                setTimeout(() => {
+                    if (!isScrolling && !isDragging) {
+                        startAutoScroll();
+                    }
+                }, 1000);
+            });
+        }
+
+        // Stream dropdown functionality
+        function setupStreamDropdowns() {
+            // Use event delegation for better performance
+            document.addEventListener('mouseenter', (e) => {
+                const tickerItem = e.target.closest('.ticker-item');
+                if (tickerItem) {
+                    // Hide all other dropdowns
+                    document.querySelectorAll('.stream-dropdown').forEach(dropdown => {
+                        dropdown.classList.remove('show');
+                    });
+                    
+                    // Show current dropdown
+                    const dropdown = tickerItem.querySelector('.stream-dropdown');
+                    if (dropdown) {
+                        dropdown.classList.add('show');
+                    }
+                }
+            }, true);
+
+            document.addEventListener('mouseleave', (e) => {
+                const tickerItem = e.target.closest('.ticker-item');
+                if (tickerItem) {
+                    const dropdown = tickerItem.querySelector('.stream-dropdown');
+                    if (dropdown) {
+                        dropdown.classList.remove('show');
+                    }
+                }
+            }, true);
+
+            // Also handle click events for better mobile support
+            document.addEventListener('click', (e) => {
+                const tickerItem = e.target.closest('.ticker-item');
+                if (tickerItem) {
+                    // Hide all other dropdowns
+                    document.querySelectorAll('.stream-dropdown').forEach(dropdown => {
+                        dropdown.classList.remove('show');
+                    });
+                    
+                    // Toggle current dropdown
+                    const dropdown = tickerItem.querySelector('.stream-dropdown');
+                    if (dropdown) {
+                        dropdown.classList.toggle('show');
+                    }
+                } else {
+                    // Hide all dropdowns if clicking outside
+                    document.querySelectorAll('.stream-dropdown').forEach(dropdown => {
+                        dropdown.classList.remove('show');
+                    });
+                }
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add minimal body padding
+            document.body.style.paddingBottom = '50px';
+            
+            // Load matches
+            loadMatches();
+            
+            // Setup manual scroll
+            setupManualScroll();
+            
+            // Setup stream dropdowns
+            setupStreamDropdowns();
+        });
+        
+        // Refresh data periodically
+        setInterval(loadMatches, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>
