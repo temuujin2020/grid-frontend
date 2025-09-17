@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Use PandaScore API through proxy server
-const PROXY_API = "https://grid-proxy.onrender.com";
+// Use PandaScore API through new proxy server
+const PROXY_API = "https://esports-proxy.onrender.com";
 
 // PandaScore API endpoints
-const API_BASE = "https://grid-proxy.onrender.com/api/cs2";
+const API_BASE = "https://esports-proxy.onrender.com/api/cs2";
 const GRAPHQL_API = "https://api.grid.gg/graphql";
 
 // Team cache to avoid repeated API calls
